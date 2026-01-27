@@ -1,0 +1,28 @@
+{
+  "name": "obsidian-render-server",
+  "version": "1.0.0",
+  "description": "WebSocket server for Obsidian markdown rendering",
+  "main": "main.js",
+  "scripts": {
+    "dev": "node esbuild.config.mjs",
+    "build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production"
+  },
+  "keywords": ["obsidian", "markdown", "render", "websocket"],
+  "author": "px39n",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/px39n/obs_cursor"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/ws": "^8.18.1",
+    "esbuild": "^0.20.0",
+    "obsidian": "latest",
+    "tslib": "^2.8.1",
+    "typescript": "^5.0.0"
+  },
+  "dependencies": {
+    "ws": "^8.16.0"
+  }
+}

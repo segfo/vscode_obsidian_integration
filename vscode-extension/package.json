@@ -1,0 +1,80 @@
+{
+  "name": "obsidian-preview",
+  "displayName": "Obsidian Preview",
+  "description": "Preview markdown using Obsidian's renderer with full plugin support",
+  "version": "1.0.0",
+  "publisher": "px39n",
+  "author": {
+    "name": "px39n"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/px39n/obs_cursor"
+  },
+  "bugs": {
+    "url": "https://github.com/px39n/obs_cursor/issues"
+  },
+  "homepage": "https://github.com/px39n/obs_cursor#readme",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": ["Other", "Visualization"],
+  "keywords": ["obsidian", "markdown", "preview", "wikilink", "dataview"],
+  "icon": "icon.png",
+  "activationEvents": [
+    "onLanguage:markdown"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "obsidian-preview.open",
+        "title": "Obsidian Preview: Open Preview",
+        "icon": "$(open-preview)"
+      },
+      {
+        "command": "obsidian-preview.openDebug",
+        "title": "Obsidian Preview: Open Debug Preview",
+        "icon": "$(debug)"
+      },
+      {
+        "command": "obsidian-preview.connect",
+        "title": "Obsidian Preview: Connect to Obsidian"
+      }
+    ],
+    "menus": {
+      "editor/title": [
+        {
+          "when": "resourceLangId == markdown",
+          "command": "obsidian-preview.open",
+          "group": "navigation"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Obsidian Preview",
+      "properties": {
+        "obsidianPreview.port": {
+          "type": "number",
+          "default": 27123,
+          "description": "Port for Obsidian render server"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.85.0",
+    "@types/ws": "^8.5.10",
+    "typescript": "^5.0.0"
+  },
+  "dependencies": {
+    "ws": "^8.16.0"
+  }
+}

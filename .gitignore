@@ -1,0 +1,23 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+obsidian-plugin/main.js
+obsidian-plugin/main.js.map
+vscode-extension/out/
+vscode-extension/*.vsix
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+
+# Private docs
+related_doc/

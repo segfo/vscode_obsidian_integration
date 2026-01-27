@@ -1,0 +1,11 @@
+{
+  "id": "obsidian-render-server",
+  "name": "Obsidian Render Server",
+  "version": "1.0.0",
+  "minAppVersion": "1.0.0",
+  "description": "WebSocket server that exposes Obsidian's markdown renderer to external editors",
+  "author": "px39n",
+  "authorUrl": "https://github.com/px39n",
+  "fundingUrl": "",
+  "isDesktopOnly": true
+}
