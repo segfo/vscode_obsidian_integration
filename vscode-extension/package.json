@@ -21,7 +21,6 @@
   },
   "categories": ["Other", "Visualization"],
   "keywords": ["obsidian", "markdown", "preview", "wikilink", "dataview"],
-  "icon": "icon.png",
   "activationEvents": [
     "onLanguage:markdown"
   ],
