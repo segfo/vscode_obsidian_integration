@@ -33,7 +33,7 @@ Cursor/VS Code is great for AI-assisted editing. Obsidian is great for knowledge
 Settings → Community Plugins → Browse → **"Obsidian for Cursor"** → Install → Enable
 
 ### 2. Cursor / VS Code Extension
-Extensions (Ctrl+Shift+X) → Search **"Obsidian for Cursor"** → Install
+[**Install from Marketplace**](https://marketplace.visualstudio.com/items?itemName=px39n.obsidian-for-cursor) or search `px39n.obsidian-for-cursor` in Extensions (Ctrl+Shift+X)
 
 ---
 
