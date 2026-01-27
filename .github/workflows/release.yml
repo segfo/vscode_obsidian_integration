@@ -5,6 +5,9 @@ on:
     tags:
       - '*'
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -16,30 +19,32 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: |
+            obsidian-plugin/package-lock.json
+            vscode-extension/package-lock.json
       
       # Build Obsidian plugin
       - name: Build Obsidian Plugin
         run: |
           cd obsidian-plugin
-          npm install
+          npm ci || npm install
           npm run build
       
       # Build VS Code extension
       - name: Build VS Code Extension
         run: |
           cd vscode-extension
-          npm install
+          npm ci || npm install
           npm run compile
-          npx vsce package
+          npx @vscode/vsce package --allow-missing-repository
       
       # Create GitHub Release
       - name: Create Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           files: |
             obsidian-plugin/main.js
             obsidian-plugin/manifest.json
             vscode-extension/*.vsix
           generate_release_notes: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
