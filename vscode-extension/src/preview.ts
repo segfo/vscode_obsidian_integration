@@ -46,7 +46,38 @@ export class PreviewPanel {
     });
   }
 
+  private vaultUri: vscode.Uri | null = null;
+  private currentTitle: string | undefined;
+
   static create(extensionUri: vscode.Uri, debugMode: boolean = false): PreviewPanel {
+    // Get all workspace folders and active editor's folder
+    const workspaceFolders = vscode.workspace.workspaceFolders;
+    const activeEditor = vscode.window.activeTextEditor;
+    
+    // Collect all possible resource roots
+    const resourceRoots: vscode.Uri[] = [extensionUri];
+    
+    // Add workspace folders
+    if (workspaceFolders) {
+      workspaceFolders.forEach(folder => resourceRoots.push(folder.uri));
+    }
+    
+    // Add active file's directory (vault might be here)
+    if (activeEditor) {
+      const fileDir = vscode.Uri.joinPath(activeEditor.document.uri, '..');
+      resourceRoots.push(fileDir);
+      // Also add parent directories up to drive root (to cover vault root)
+      let parent = fileDir;
+      for (let i = 0; i < 10; i++) {
+        const newParent = vscode.Uri.joinPath(parent, '..');
+        if (newParent.fsPath === parent.fsPath) break;
+        resourceRoots.push(newParent);
+        parent = newParent;
+      }
+    }
+    
+    const vaultUri = workspaceFolders?.[0]?.uri || (activeEditor ? vscode.Uri.joinPath(activeEditor.document.uri, '..') : null);
+    
     const panel = vscode.window.createWebviewPanel(
       PreviewPanel.viewType,
       debugMode ? "Obsidian Preview (Debug)" : "Obsidian Preview",
@@ -54,13 +85,17 @@ export class PreviewPanel {
       {
         enableScripts: true,
         retainContextWhenHidden: true,
+        localResourceRoots: resourceRoots,
       }
     );
 
-    return new PreviewPanel(panel, extensionUri, debugMode);
+    const previewPanel = new PreviewPanel(panel, extensionUri, debugMode);
+    previewPanel.vaultUri = vaultUri || null;
+    return previewPanel;
   }
 
-  updateContent(html: string, css: string): void {
+  updateContent(html: string, css: string, title?: string): void {
+    this.currentTitle = title;
     // Debug: log HTML size
     if (this.debugMode) {
       console.log(`[Preview] Received HTML: ${html.length} chars`);
@@ -71,7 +106,68 @@ export class PreviewPanel {
         console.log(`[Preview] Dataview matches:`, dvMatch.slice(0, 3));
       }
     }
-    this.panel.webview.html = this.getWebviewContent(html, css);
+    
+    // Convert local image paths to webview URIs
+    const processedHtml = this.processLocalImages(html);
+    this.panel.webview.html = this.getWebviewContent(processedHtml, css);
+  }
+  
+  /**
+   * Convert local image paths to webview-compatible URIs
+   */
+  private processLocalImages(html: string): string {
+    if (!this.vaultUri) {
+      console.log("[Preview] No vaultUri, skipping image processing");
+      return html;
+    }
+    
+    const webview = this.panel.webview;
+    const vaultPath = this.vaultUri.fsPath;
+    
+    console.log("[Preview] Processing images, vaultPath:", vaultPath);
+    
+    // Match src attributes with various patterns
+    return html.replace(
+      /src=["']([^"']+)["']/g,
+      (match, src) => {
+        console.log("[Preview] Found src:", src);
+        
+        // Skip data URIs and external URLs
+        if (src.startsWith('data:') || src.startsWith('http://') || src.startsWith('https://')) {
+          return match;
+        }
+        
+        // Handle app:// protocol (Obsidian internal)
+        if (src.startsWith('app://')) {
+          // Extract the path after app://xxx/
+          const pathMatch = src.match(/app:\/\/[^/]+\/(.+)/);
+          if (pathMatch) {
+            let filePath = decodeURIComponent(pathMatch[1]);
+            // Remove query string (e.g., ?1738439523304)
+            const queryIndex = filePath.indexOf('?');
+            if (queryIndex !== -1) {
+              filePath = filePath.substring(0, queryIndex);
+            }
+            console.log("[Preview] app:// path converted to:", filePath);
+            const fileUri = vscode.Uri.file(filePath);
+            const webviewUri = webview.asWebviewUri(fileUri);
+            return `src="${webviewUri}"`;
+          }
+        }
+        
+        // Handle relative paths
+        try {
+          const absolutePath = src.startsWith('/') ? src : `${vaultPath}/${src}`;
+          console.log("[Preview] Relative path converted to:", absolutePath);
+          const fileUri = vscode.Uri.file(absolutePath);
+          const webviewUri = webview.asWebviewUri(fileUri);
+          return `src="${webviewUri}"`;
+        } catch (err) {
+          console.log("[Preview] Error processing image:", err);
+          return match;
+        }
+      }
+    );
   }
 
   onLinkClick(callback: LinkClickCallback): void {
@@ -94,6 +190,12 @@ export class PreviewPanel {
     const debugPanel = this.debugMode ? `
     <div id="debug-panel" style="position:fixed;top:0;left:0;right:0;background:#ffeb3b;color:#000;padding:10px;font-family:monospace;font-size:12px;z-index:9999;border-bottom:2px solid #f57c00;">
       Debug Mode: Click anywhere to see element info
+    </div>` : '';
+    
+    const titleBar = this.currentTitle ? `
+    <div class="preview-title-bar">
+      <span class="preview-title-icon">📄</span>
+      <span class="preview-title-text">${this.currentTitle}</span>
     </div>` : '';
     
     return `<!DOCTYPE html>
@@ -119,6 +221,26 @@ export class PreviewPanel {
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       font-size: 14px;
       line-height: 1.6;
+    }
+    
+    /* Title bar styles */
+    .preview-title-bar {
+      display: flex;
+      align-items: center;
+      padding: 8px 0 16px 0;
+      margin-bottom: 8px;
+      border-bottom: 1px solid var(--background-secondary);
+    }
+    
+    .preview-title-icon {
+      margin-right: 8px;
+      font-size: 16px;
+    }
+    
+    .preview-title-text {
+      font-size: 18px;
+      font-weight: 600;
+      color: var(--text-normal);
     }
     
     /* Link styles */
@@ -217,6 +339,7 @@ export class PreviewPanel {
 </head>
 <body class="theme-light">
   ${debugPanel}
+  ${titleBar}
   <div class="markdown-preview-view markdown-rendered" style="${this.debugMode ? 'margin-top:50px;' : ''}">
     ${html}
   </div>
@@ -320,6 +443,39 @@ export class PreviewPanel {
         e.preventDefault();
         e.stopPropagation();
         var targetPath = link.getAttribute('data-href') || link.getAttribute('href') || link.textContent;
+        if (isDebugMode) {
+          updateDebug('Link: data-href="' + (link.getAttribute('data-href') || 'none') + 
+                     '" href="' + (link.getAttribute('href') || 'none') + 
+                     '" text="' + (link.textContent || 'none') + 
+                     '" → targetPath="' + targetPath + '"');
+        }
+        
+        // Handle same-file anchor links (scroll within preview)
+        if (targetPath && targetPath.startsWith('#')) {
+          var anchorName = targetPath.substring(1).toLowerCase().replace(/-/g, ' ');
+          // Find matching heading in preview
+          var headings = document.querySelectorAll('h1, h2, h3, h4, h5, h6');
+          for (var i = 0; i < headings.length; i++) {
+            var h = headings[i];
+            var headingText = (h.textContent || '').toLowerCase().trim();
+            if (headingText === anchorName || headingText.replace(/\\s+/g, '-') === targetPath.substring(1).toLowerCase()) {
+              h.scrollIntoView({ behavior: 'smooth', block: 'start' });
+              if (isDebugMode) {
+                updateDebug('Scrolled to heading: ' + h.textContent);
+              }
+              // Also notify extension to scroll editor
+              vscode.postMessage({ type: 'linkClick', targetPath: targetPath });
+              return;
+            }
+          }
+          if (isDebugMode) {
+            updateDebug('Heading not found in preview: ' + anchorName);
+          }
+          // Still notify extension even if not found in preview
+          vscode.postMessage({ type: 'linkClick', targetPath: targetPath });
+          return;
+        }
+        
         if (targetPath && targetPath.indexOf('http') !== 0) {
           vscode.postMessage({ type: 'linkClick', targetPath: targetPath });
         }
@@ -426,6 +582,23 @@ export class PreviewPanel {
       hoverPreview.addEventListener('mouseleave', function() {
         hideHoverPreview();
       });
+    }
+    
+    // Debug: show image info on load
+    if (isDebugMode) {
+      setTimeout(function() {
+        var imgs = document.querySelectorAll('img');
+        var imgInfo = 'Images found: ' + imgs.length + '<br>';
+        imgs.forEach(function(img, i) {
+          var src = img.getAttribute('src') || '(none)';
+          var broken = !img.complete || img.naturalWidth === 0;
+          var dims = img.naturalWidth + 'x' + img.naturalHeight;
+          imgInfo += (i+1) + '. ' + (broken ? '❌' : '✓') + ' [' + dims + '] src="' + src.substring(0, 150) + (src.length > 150 ? '...' : '') + '"<br>';
+        });
+        if (imgs.length > 0) {
+          updateDebug(imgInfo);
+        }
+      }, 1000);
     }
   </script>
 </body>

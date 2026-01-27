@@ -1,8 +1,8 @@
 {
-  "name": "obsidian-for-cursor",
+  "name": "obsidianpreview",
   "displayName": "Obsidian for Cursor",
   "description": "Preview and navigate your Obsidian vault in Cursor/VS Code with full plugin support",
-  "version": "1.0.3",
+  "version": "1.0.1",
   "icon": "icon.png",
   "publisher": "px39n",
   "author": {
@@ -20,8 +20,17 @@
   "engines": {
     "vscode": "^1.85.0"
   },
-  "categories": ["Other", "Visualization"],
-  "keywords": ["obsidian", "markdown", "preview", "wikilink", "dataview"],
+  "categories": [
+    "Other",
+    "Visualization"
+  ],
+  "keywords": [
+    "obsidian",
+    "markdown",
+    "preview",
+    "wikilink",
+    "dataview"
+  ],
   "activationEvents": [
     "onLanguage:markdown"
   ],

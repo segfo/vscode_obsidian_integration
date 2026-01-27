@@ -125,7 +125,9 @@ export function activate(context: vscode.ExtensionContext): void {
     if (previewPanel && client.isConnected()) {
       try {
         const result = await client.render(filePath, content);
-        previewPanel.updateContent(result.html, result.css);
+        // Extract filename without extension for title
+        const fileName = filePath.split(/[/\\]/).pop()?.replace(/\.md$/i, '') || '';
+        previewPanel.updateContent(result.html, result.css, fileName);
       } catch (err) {
         console.error("[Preview] Render failed:", err);
         previewPanel.updateContent(
@@ -163,10 +165,12 @@ async function updatePreview(document: vscode.TextDocument): Promise<void> {
 
   const filePath = document.uri.fsPath;
   const content = document.getText();
+  // Extract filename without extension for title
+  const fileName = filePath.split(/[/\\]/).pop()?.replace(/\.md$/i, '') || '';
   
   try {
     const result = await client.render(filePath, content);
-    previewPanel.updateContent(result.html, result.css);
+    previewPanel.updateContent(result.html, result.css, fileName);
   } catch (err) {
     console.error("[Preview] Render failed:", err);
     previewPanel.updateContent(
@@ -178,6 +182,11 @@ async function updatePreview(document: vscode.TextDocument): Promise<void> {
 
 async function getHoverPreview(targetPath: string): Promise<{ html: string; css: string } | null> {
   if (!client.isConnected()) return null;
+  
+  // Skip same-file anchors (e.g., "#Heading")
+  if (targetPath.startsWith("#")) {
+    return null;
+  }
   
   try {
     // Parse the link - handle [[File#Heading]] format
@@ -237,8 +246,33 @@ async function handleLinkClick(targetPath: string): Promise<void> {
   }
   
   // If only anchor (e.g., "#Code"), it's a link within the same file
+  console.log("[LinkClick] filePart:", filePart, "anchorPart:", anchorPart);
   if (!filePart && anchorPart) {
-    // TODO: scroll to anchor in current file
+    console.log("[LinkClick] Same-file anchor detected:", anchorPart);
+    const editor = vscode.window.activeTextEditor;
+    if (editor) {
+      const doc = editor.document;
+      const text = doc.getText();
+      const lines = text.split("\n");
+      
+      // Search for heading that matches the anchor
+      const anchorLower = anchorPart.toLowerCase().replace(/-/g, " ");
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        // Match headings: # Heading, ## Heading, etc.
+        const headingMatch = line.match(/^#+\s+(.+)$/);
+        if (headingMatch) {
+          const headingText = headingMatch[1].toLowerCase().trim();
+          if (headingText === anchorLower || headingText.replace(/\s+/g, "-") === anchorPart.toLowerCase()) {
+            // Found the heading, navigate to it
+            const position = new vscode.Position(i, 0);
+            editor.selection = new vscode.Selection(position, position);
+            editor.revealRange(new vscode.Range(position, position), vscode.TextEditorRevealType.AtTop);
+            break;
+          }
+        }
+      }
+    }
     return;
   }
   

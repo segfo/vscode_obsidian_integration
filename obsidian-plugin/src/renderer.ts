@@ -49,13 +49,6 @@ export async function renderMarkdown(
   // Wait for plugins to process (Admonition, Dataview, etc.)
   await waitForPlugins(container);
 
-  // Debug: log dataview elements
-  const dvElements = container.querySelectorAll(".dataview, [class*='dataview']");
-  console.log("[RenderServer] Dataview elements found:", dvElements.length);
-  dvElements.forEach((el, i) => {
-    console.log(`[RenderServer] DV ${i}:`, el.outerHTML.substring(0, 500));
-  });
-
   const html = container.innerHTML;
   const css = extractThemeCSS();
 
