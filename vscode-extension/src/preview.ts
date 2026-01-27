@@ -147,6 +147,32 @@ export class PreviewPanel {
       cursor: pointer;
     }
     
+    /* Embed styles - prevent extra whitespace */
+    .internal-embed,
+    .markdown-embed,
+    .markdown-embed-content,
+    .markdown-embed-content > .markdown-preview-view,
+    .markdown-embed .markdown-preview-view,
+    .markdown-embed-content .markdown-preview-view.markdown-rendered,
+    .markdown-embed-content .markdown-preview-view.show-indentation-guide,
+    span.internal-embed .markdown-embed,
+    span.internal-embed .markdown-embed-content,
+    span.internal-embed .markdown-preview-view {
+      display: block !important;
+      position: relative !important;
+      min-height: 0 !important;
+      max-height: none !important;
+      height: auto !important;
+      margin: 0 !important;
+      padding: 0 !important;
+      border: none !important;
+      overflow: visible !important;
+    }
+    
+    .internal-embed {
+      margin: 8px 0 !important;
+    }
+    
     /* Hover preview popup */
     #hover-preview {
       position: fixed;
@@ -171,6 +197,22 @@ export class PreviewPanel {
     }
     
     ${css}
+  </style>
+  <style>
+    /* Override Obsidian's embed styles - MUST be after Obsidian CSS */
+    .internal-embed,
+    .markdown-embed,
+    .markdown-embed-content,
+    .markdown-embed-content > .markdown-preview-view,
+    .markdown-embed .markdown-preview-view,
+    .markdown-embed-content .markdown-preview-view.markdown-rendered,
+    .markdown-embed-content .markdown-preview-view.show-indentation-guide {
+      min-height: 0 !important;
+      max-height: none !important;
+      height: auto !important;
+      position: relative !important;
+      overflow: visible !important;
+    }
   </style>
 </head>
 <body class="theme-light">

@@ -51,14 +51,22 @@ export class ObsidianClient {
       });
 
       this.ws.on("message", (data: Buffer) => {
-        const response: ResponseMessage = JSON.parse(data.toString());
-        // Simple response handling (no request ID in current protocol)
-        const pending = this.pendingRequests.values().next().value;
-        if (pending) {
-          pending.resolve(response);
-          this.pendingRequests.delete(
-            this.pendingRequests.keys().next().value!
-          );
+        try {
+          const response: ResponseMessage = JSON.parse(data.toString());
+          console.log(`[ObsidianClient] Received response type=${response.type}, pending=${this.pendingRequests.size}`);
+          
+          // Simple response handling (no request ID in current protocol)
+          const pendingEntry = this.pendingRequests.entries().next().value;
+          if (pendingEntry) {
+            const [id, pending] = pendingEntry;
+            console.log(`[ObsidianClient] Resolving request #${id}`);
+            pending.resolve(response);
+            this.pendingRequests.delete(id);
+          } else {
+            console.warn(`[ObsidianClient] Received response but no pending request`);
+          }
+        } catch (err) {
+          console.error(`[ObsidianClient] Failed to parse message:`, err);
         }
       });
     });
@@ -110,17 +118,26 @@ export class ObsidianClient {
 
   private sendRequest(request: object, timeoutMs: number = 10000): Promise<ResponseMessage> {
     return new Promise((resolve, reject) => {
-      if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
-        reject(new Error("Not connected"));
+      if (!this.ws) {
+        reject(new Error("WebSocket is null - not connected"));
+        return;
+      }
+      
+      if (this.ws.readyState !== WebSocket.OPEN) {
+        reject(new Error(`WebSocket not open (state: ${this.ws.readyState})`));
         return;
       }
 
       const id = ++this.requestId;
+      const requestType = (request as { type?: string }).type || "unknown";
+      const pendingCount = this.pendingRequests.size;
+      
+      console.log(`[ObsidianClient] Sending request #${id} type=${requestType}, pending=${pendingCount}`);
       
       // Timeout handling
       const timeout = setTimeout(() => {
         this.pendingRequests.delete(id);
-        reject(new Error("Request timeout"));
+        reject(new Error(`Timeout (10s) for ${requestType} request #${id}. Pending requests: ${this.pendingRequests.size}. Check Obsidian console for errors.`));
       }, timeoutMs);
 
       this.pendingRequests.set(id, { 

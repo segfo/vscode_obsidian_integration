@@ -15,6 +15,8 @@ Cursor/VS Code is great for AI-assisted editing. Obsidian is great for knowledge
 
 ## Features
 
+![Demo](assets/Animation.gif)
+
 - **Live Preview** — Dataview, Admonition, callouts, all rendered
 - **Click to Navigate** — `[[wikilinks]]` and `[[File#Heading]]` work
 - **Hover Preview** — See linked notes without switching files

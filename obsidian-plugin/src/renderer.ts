@@ -68,21 +68,34 @@ export async function renderMarkdown(
 
 /**
  * Wait for plugins to finish processing the container.
- * Uses MutationObserver to detect when DOM changes stop.
- * Dataview queries may take longer, so we use generous timeouts.
+ * Only waits if plugin content is detected.
  */
 async function waitForPlugins(container: HTMLElement): Promise<void> {
-  // First, wait for initial mutations to settle
-  await waitForMutations(container, 500, 2000);
+  // Check if page has plugin content that needs waiting
+  const hasDataview = container.querySelector(".block-language-dataview, .dataview") !== null;
+  const hasAdmonition = container.querySelector(".callout, .admonition, .block-language-ad-") !== null;
+  const hasEmbed = container.querySelector(".internal-embed") !== null;
   
-  // Then check for empty Dataview spans and wait more if needed
-  for (let retry = 0; retry < 5; retry++) {
-    const emptySpans = container.querySelectorAll("td span:empty, .dataview span:empty");
-    if (emptySpans.length === 0) {
-      break; // All spans have content
+  if (!hasDataview && !hasAdmonition && !hasEmbed) {
+    // Simple page - minimal wait (just let render complete)
+    await new Promise(r => setTimeout(r, 50));
+    return;
+  }
+  
+  // Has plugins - wait for mutations to settle
+  // Embed needs more time because it loads external content
+  const debounceMs = hasDataview ? 300 : (hasEmbed ? 200 : 100);
+  const maxWaitMs = hasDataview ? 1500 : (hasEmbed ? 1000 : 500);
+  
+  await waitForMutations(container, debounceMs, maxWaitMs);
+  
+  // If Dataview, check for empty spans
+  if (hasDataview) {
+    for (let retry = 0; retry < 3; retry++) {
+      const emptySpans = container.querySelectorAll("td span:empty, .dataview span:empty");
+      if (emptySpans.length === 0) break;
+      await new Promise(r => setTimeout(r, 300));
     }
-    // Wait more for Dataview to fill content
-    await new Promise(r => setTimeout(r, 500));
   }
 }
 
