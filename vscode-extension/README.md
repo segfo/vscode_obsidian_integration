@@ -29,13 +29,13 @@ Cursor/VS Code is great for AI-assisted editing. Obsidian is great for knowledge
 
 ## Install
 
-### 1. Obsidian Plugin
+### 1. Obsidian Plugin (Under review)
 Settings → Community Plugins → Browse → **"Cursor Integration"** → Install
+> This project is under review by Obsidian team, you can manually install it by following the [Manual Installation Guide](INSTALL.md)
+
 
 ### 2. Cursor / VS Code Extension
 [**Install from Marketplace**](https://marketplace.visualstudio.com/items?itemName=px39n.obsidian-for-cursor) or search `obsidian-for-cursor` in Extensions
-
-> **[Manual Installation Guide](INSTALL.md)** — For installing from GitHub releases
 
 ---
 
