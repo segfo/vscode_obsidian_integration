@@ -35,7 +35,8 @@ Settings → Community Plugins → Browse → **"Cursor Integration"** → Insta
 
 
 ### 2. Cursor / VS Code Extension
-[**Install from Marketplace**](https://marketplace.visualstudio.com/items?itemName=px39n.obsidian-for-cursor) or search `obsidian-for-cursor` in Extensions
+- **Cursor**: [**Install from OpenVSX**](https://open-vsx.org/extension/px39n/obsidian-for-cursor) or search `obsidian-for-cursor`
+- **VS Code**: [**Install from Marketplace**](https://marketplace.visualstudio.com/items?itemName=px39n.obsidian-for-cursor)
 
 ---
 
