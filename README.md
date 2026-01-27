@@ -1,4 +1,4 @@
-# Obsidian Preview for Cursor / VS Code
+# Obsidian for Cursor
 
 > **Preview & navigate your Obsidian vault while coding with AI.**
 
@@ -28,10 +28,10 @@ Cursor/VS Code is great for AI-assisted editing. Obsidian is great for knowledge
 ## Install
 
 ### 1. Obsidian Plugin
-Settings → Community Plugins → Browse → **"Obsidian Render Server"** → Install → Enable
+Settings → Community Plugins → Browse → **"Obsidian for Cursor"** → Install → Enable
 
 ### 2. Cursor / VS Code Extension
-Extensions (Ctrl+Shift+X) → Search **"Obsidian Preview"** → Install
+Extensions (Ctrl+Shift+X) → Search **"Obsidian for Cursor"** → Install
 
 ---
 

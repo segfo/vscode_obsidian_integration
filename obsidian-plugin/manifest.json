@@ -1,9 +1,9 @@
 {
-  "id": "obsidian-render-server",
-  "name": "Obsidian Render Server",
+  "id": "obsidian-for-cursor",
+  "name": "Obsidian for Cursor",
   "version": "1.0.0",
   "minAppVersion": "1.0.0",
-  "description": "WebSocket server that exposes Obsidian's markdown renderer to external editors",
+  "description": "Preview and navigate your Obsidian vault in Cursor/VS Code with full plugin support.",
   "author": "px39n",
   "authorUrl": "https://github.com/px39n",
   "fundingUrl": "",

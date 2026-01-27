@@ -1,7 +1,7 @@
 {
-  "name": "obsidian-render-server",
+  "name": "obsidian-for-cursor",
   "version": "1.0.0",
-  "description": "WebSocket server for Obsidian markdown rendering",
+  "description": "Preview and navigate your Obsidian vault in Cursor/VS Code with full plugin support",
   "main": "main.js",
   "scripts": {
     "dev": "node esbuild.config.mjs",

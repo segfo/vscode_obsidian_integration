@@ -1,7 +1,7 @@
 {
-  "name": "obsidian-preview",
-  "displayName": "Obsidian Preview",
-  "description": "Preview markdown using Obsidian's renderer with full plugin support",
+  "name": "obsidian-for-cursor",
+  "displayName": "Obsidian for Cursor",
+  "description": "Preview and navigate your Obsidian vault in Cursor/VS Code with full plugin support",
   "version": "1.0.0",
   "publisher": "px39n",
   "author": {
