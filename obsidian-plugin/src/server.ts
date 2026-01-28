@@ -1,6 +1,8 @@
 import { App } from "obsidian";
-import * as http from "http";
-import * as crypto from "crypto";
+import type { Server, IncomingMessage } from "http";
+import type { Duplex } from "stream";
+import { createServer } from "http";
+import { createHash } from "crypto";
 import { renderMarkdown, resolveWikilink } from "./renderer";
 
 export interface RenderRequest {
@@ -40,8 +42,8 @@ type ResponseMessage = RenderResponse | ResolveResponse | ErrorResponse;
  * This avoids compatibility issues with the 'ws' package in Electron.
  */
 export class RenderServer {
-  private server: http.Server | null = null;
-  private clients: Set<import("stream").Duplex> = new Set();
+  private server: Server | null = null;
+  private clients: Set<Duplex> = new Set();
   private app: App;
   private port: number;
 
@@ -50,10 +52,10 @@ export class RenderServer {
     this.port = port;
   }
 
-  start(): void {
-    this.server = http.createServer();
+  async start(): Promise<void> {
+    this.server = createServer();
 
-    this.server.on("upgrade", (req, socket) => {
+    this.server.on("upgrade", (req: IncomingMessage, socket: Duplex) => {
       const key = req.headers["sec-websocket-key"];
       if (!key) {
         socket.destroy();
@@ -61,8 +63,7 @@ export class RenderServer {
       }
 
       // WebSocket handshake
-      const acceptKey = crypto
-        .createHash("sha1")
+      const acceptKey = createHash("sha1")
         .update(key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11")
         .digest("base64");
 
@@ -141,7 +142,7 @@ export class RenderServer {
     return payload.toString("utf8");
   }
 
-  private sendFrame(socket: import("stream").Duplex, message: string): void {
+  private sendFrame(socket: Duplex, message: string): void {
     const payload = Buffer.from(message, "utf8");
     const payloadLength = payload.length;
 

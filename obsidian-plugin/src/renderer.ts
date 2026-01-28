@@ -25,11 +25,7 @@ export async function renderMarkdown(
   content: string
 ): Promise<RenderResult> {
   const container = document.createElement("div");
-  container.addClass("markdown-preview-view", "markdown-rendered");
-
-  // Temporarily attach to document for plugins to work
-  container.style.position = "absolute";
-  container.style.left = "-9999px";
+  container.addClass("markdown-preview-view", "markdown-rendered", "obsidian-render-offscreen");
   document.body.appendChild(container);
 
   const component = new Component();
