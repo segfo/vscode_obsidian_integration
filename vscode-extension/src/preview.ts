@@ -94,6 +94,17 @@ export class PreviewPanel {
     return previewPanel;
   }
 
+  showLoading(title?: string): void {
+    this.currentTitle = title;
+    const loadingHtml = `
+      <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;color:#888;">
+        <div style="font-size:24px;margin-bottom:16px;">⏳</div>
+        <div>Loading${title ? `: ${title}` : '...'}</div>
+      </div>
+    `;
+    this.panel.webview.html = this.getWebviewContent(loadingHtml, "");
+  }
+
   updateContent(html: string, css: string, title?: string): void {
     this.currentTitle = title;
     // Debug: log HTML size

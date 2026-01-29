@@ -175,6 +175,9 @@ export function activate(context: vscode.ExtensionContext): void {
         editor &&
         editor.document.languageId === "markdown"
       ) {
+        // Show loading immediately when switching files
+        const fileName = editor.document.uri.fsPath.split(/[/\\]/).pop()?.replace(/\.md$/i, '') || '';
+        previewPanel.showLoading(fileName);
         await updatePreview(editor.document);
       }
     }
