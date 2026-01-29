@@ -18,6 +18,10 @@ export interface ResolveRequest {
   currentFile: string;
 }
 
+export interface SettingsRequest {
+  type: "getSettings";
+}
+
 export interface RenderResponse {
   type: "render";
   html: string;
@@ -30,12 +34,18 @@ export interface ResolveResponse {
   targetPath: string;
 }
 
+export interface SettingsResponse {
+  type: "settings";
+  renderTimeout: number;
+  renderGracePeriod: number;
+}
+
 export interface ErrorResponse {
   type: "error";
   message: string;
 }
 
-type RequestMessage = RenderRequest | ResolveRequest;
+type RequestMessage = RenderRequest | ResolveRequest | SettingsRequest;
 type ResponseMessage = RenderResponse | ResolveResponse | ErrorResponse;
 
 export interface RenderServerSettings {
@@ -208,6 +218,16 @@ export class RenderServer {
         type: "resolve",
         displayText: result.displayText,
         targetPath: result.targetPath,
+      }));
+      return;
+    }
+
+    if (request.type === "getSettings") {
+      logger.debug("Settings request received");
+      this.sendFrame(socket, JSON.stringify({
+        type: "settings",
+        renderTimeout: this.settings.renderTimeout,
+        renderGracePeriod: this.settings.renderGracePeriod,
       }));
       return;
     }

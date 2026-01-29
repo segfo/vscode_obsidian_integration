@@ -1,4 +1,5 @@
 import WebSocket from "ws";
+import { Logger } from "./logger";
 
 export interface RenderResponse {
   type: "render";
@@ -12,12 +13,18 @@ export interface ResolveResponse {
   targetPath: string;
 }
 
+export interface SettingsResponse {
+  type: "settings";
+  renderTimeout: number;
+  renderGracePeriod: number;
+}
+
 export interface ErrorResponse {
   type: "error";
   message: string;
 }
 
-type ResponseMessage = RenderResponse | ResolveResponse | ErrorResponse;
+type ResponseMessage = RenderResponse | ResolveResponse | SettingsResponse | ErrorResponse;
 
 export class ObsidianClient {
   private ws: WebSocket | null = null;
@@ -28,6 +35,7 @@ export class ObsidianClient {
   > = new Map();
   private requestId = 0;
   private disconnectCallbacks: Array<() => void> = [];
+  private renderTimeoutMs = 60000; // Default 60s, updated from OBS settings
 
   constructor(port: number) {
     this.port = port;
@@ -38,6 +46,8 @@ export class ObsidianClient {
       this.ws = new WebSocket(`ws://localhost:${this.port}`);
 
       this.ws.on("open", () => {
+        // Fetch settings from OBS after connection
+        void this.fetchSettings();
         resolve();
       });
 
@@ -116,7 +126,23 @@ export class ObsidianClient {
     this.disconnectCallbacks.push(callback);
   }
 
-  private sendRequest(request: object, timeoutMs: number = 10000): Promise<ResponseMessage> {
+  private async fetchSettings(): Promise<void> {
+    try {
+      const response = await this.sendRequest({ type: "getSettings" }, 5000);
+      if (response.type === "settings") {
+        this.renderTimeoutMs = response.renderTimeout * 1000;
+        console.log(`[ObsidianClient] Settings received: renderTimeout=${response.renderTimeout}s`);
+      }
+    } catch (err) {
+      console.warn("[ObsidianClient] Failed to fetch settings, using defaults:", err);
+    }
+  }
+
+  private sendRequest(request: object, timeoutMs?: number): Promise<ResponseMessage> {
+    const requestType = (request as { type?: string }).type || "unknown";
+    // Use renderTimeoutMs for render requests, or provided timeout, or default 60s
+    const effectiveTimeout = timeoutMs ?? (requestType === "render" ? this.renderTimeoutMs : 60000);
+    
     return new Promise((resolve, reject) => {
       if (!this.ws) {
         reject(new Error("WebSocket is null - not connected"));
@@ -129,11 +155,11 @@ export class ObsidianClient {
       }
 
       const id = ++this.requestId;
-      const requestType = (request as { type?: string }).type || "unknown";
       const filePath = (request as { filePath?: string }).filePath || "";
       const fileName = filePath.split(/[/\\]/).pop() || filePath;
       const pendingCount = this.pendingRequests.size;
       const startTime = Date.now();
+      const logPath = Logger.getLogFilePath();
       
       console.log(`[ObsidianClient] Sending request #${id} type=${requestType}, file=${fileName}, pending=${pendingCount}`);
       
@@ -146,10 +172,11 @@ export class ObsidianClient {
           `Request: #${id} ${requestType}`,
           `File: ${fileName}`,
           `Pending: ${this.pendingRequests.size} other requests`,
-          `Hint: Check Obsidian console (Ctrl+Shift+I) for plugin errors or slow render warnings`,
+          `Log: ${logPath}`,
+          `Hint: Run "Obsidian Preview: Open Log File" to see details`,
         ].join("\n  ");
         reject(new Error(errorDetails));
-      }, timeoutMs);
+      }, effectiveTimeout);
 
       this.pendingRequests.set(id, { 
         resolve: (value) => {
