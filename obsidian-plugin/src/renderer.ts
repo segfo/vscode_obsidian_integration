@@ -117,6 +117,8 @@ async function waitForPlugins(container: HTMLElement, fileName: string): Promise
 
 /**
  * Wait for DOM mutations to settle.
+ * Uses debounce for settling detection, but has an absolute max timeout
+ * that cannot be extended by mutations.
  */
 async function waitForMutations(
   container: HTMLElement,
@@ -124,18 +126,22 @@ async function waitForMutations(
   maxWaitMs: number
 ): Promise<void> {
   return new Promise((resolve) => {
-    let timeout: ReturnType<typeof setTimeout>;
+    let debounceTimeout: ReturnType<typeof setTimeout>;
     let settled = false;
 
+    const finish = () => {
+      if (!settled) {
+        settled = true;
+        clearTimeout(debounceTimeout);
+        observer.disconnect();
+        resolve();
+      }
+    };
+
     const observer = new MutationObserver(() => {
-      clearTimeout(timeout);
-      timeout = setTimeout(() => {
-        if (!settled) {
-          settled = true;
-          observer.disconnect();
-          resolve();
-        }
-      }, debounceMs);
+      // Reset debounce timer on each mutation
+      clearTimeout(debounceTimeout);
+      debounceTimeout = setTimeout(finish, debounceMs);
     });
 
     observer.observe(container, {
@@ -145,14 +151,11 @@ async function waitForMutations(
       characterData: true,
     });
 
-    // Max wait time
-    timeout = setTimeout(() => {
-      if (!settled) {
-        settled = true;
-        observer.disconnect();
-        resolve();
-      }
-    }, maxWaitMs);
+    // Absolute max wait time - cannot be extended by mutations
+    setTimeout(finish, maxWaitMs);
+    
+    // Initial debounce timer
+    debounceTimeout = setTimeout(finish, debounceMs);
   });
 }
 
