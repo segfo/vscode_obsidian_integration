@@ -4,6 +4,7 @@ import type { Duplex } from "stream";
 import { createServer } from "http";
 import { createHash } from "crypto";
 import { renderMarkdown, resolveWikilink } from "./renderer";
+import { logger } from "./logger";
 
 export interface RenderRequest {
   type: "render";
@@ -172,20 +173,30 @@ export class RenderServer {
     try {
       request = JSON.parse(data) as RequestMessage;
     } catch {
+      logger.error("Invalid JSON received");
       return { type: "error", message: "Invalid JSON" };
     }
 
     if (request.type === "render") {
-      const result = await renderMarkdown(
-        this.app,
-        request.filePath,
-        request.content
-      );
-      return {
-        type: "render",
-        html: result.html,
-        css: result.css,
-      };
+      const fileName = request.filePath.split(/[/\\]/).pop() || request.filePath;
+      logger.debug(`Render request received: ${fileName}`);
+      try {
+        const result = await renderMarkdown(
+          this.app,
+          request.filePath,
+          request.content
+        );
+        logger.debug(`Render complete: ${fileName} (${result.html.length} bytes)`);
+        return {
+          type: "render",
+          html: result.html,
+          css: result.css,
+        };
+      } catch (err) {
+        const errorMsg = String(err);
+        logger.error(`Render error for ${fileName}: ${errorMsg}`);
+        return { type: "error", message: errorMsg };
+      }
     }
 
     if (request.type === "resolve") {
@@ -201,6 +212,7 @@ export class RenderServer {
       };
     }
 
+    logger.warn(`Unknown request type: ${data}`);
     return { type: "error", message: "Unknown request type" };
   }
 }

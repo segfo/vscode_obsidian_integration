@@ -4,6 +4,7 @@ import { EditorWatcher } from "./watcher";
 import { PreviewPanel } from "./preview";
 import { EditorDecorator } from "./decorator";
 import { WikilinkHoverProvider } from "./hover";
+import { logger, Logger } from "./logger";
 
 let client: ObsidianClient;
 let watcher: EditorWatcher;
@@ -66,6 +67,29 @@ export function activate(context: vscode.ExtensionContext): void {
     }
   );
 
+  // Command: Open log file
+  const openLogCommand = vscode.commands.registerCommand(
+    "obsidian-preview.openLog",
+    async () => {
+      const logPath = Logger.getLogFilePath();
+      try {
+        const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(logPath));
+        await vscode.window.showTextDocument(doc);
+      } catch {
+        vscode.window.showWarningMessage(`Log file not found: ${logPath}`);
+      }
+    }
+  );
+
+  // Command: Clear log file
+  const clearLogCommand = vscode.commands.registerCommand(
+    "obsidian-preview.clearLog",
+    () => {
+      Logger.clearLog();
+      vscode.window.showInformationMessage("Log file cleared");
+    }
+  );
+
   async function openPreviewPanel(ctx: vscode.ExtensionContext, debugMode: boolean) {
     // Create panel first so we can show error in it
     if (previewPanel) {
@@ -123,13 +147,17 @@ export function activate(context: vscode.ExtensionContext): void {
   // Watch for content changes
   watcher.onContentChange(async (filePath, content) => {
     if (previewPanel && client.isConnected()) {
+      const fileName = filePath.split(/[/\\]/).pop() || '';
+      logger.debug(`Render request for: ${fileName}`);
       try {
         const result = await client.render(filePath, content);
         // Extract filename without extension for title
-        const fileName = filePath.split(/[/\\]/).pop()?.replace(/\.md$/i, '') || '';
-        previewPanel.updateContent(result.html, result.css, fileName);
+        const titleName = fileName.replace(/\.md$/i, '');
+        previewPanel.updateContent(result.html, result.css, titleName);
+        logger.debug(`Render complete for: ${fileName}`);
       } catch (err) {
-        console.error("[Preview] Render failed:", err);
+        const errorMsg = String(err);
+        logger.error(`Render failed for ${fileName}: ${errorMsg}`);
         previewPanel.updateContent(
           `<div style="color:red;padding:20px;">Render failed: ${err}</div>`,
           ""
@@ -156,8 +184,12 @@ export function activate(context: vscode.ExtensionContext): void {
     connectCommand,
     openCommand,
     openDebugCommand,
+    openLogCommand,
+    clearLogCommand,
     editorChangeDisposable
   );
+
+  logger.info("Extension activated");
 }
 
 async function updatePreview(document: vscode.TextDocument): Promise<void> {

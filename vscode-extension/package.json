@@ -50,6 +50,14 @@
       {
         "command": "obsidian-preview.connect",
         "title": "Obsidian Preview: Connect to Obsidian"
+      },
+      {
+        "command": "obsidian-preview.openLog",
+        "title": "Obsidian Preview: Open Log File"
+      },
+      {
+        "command": "obsidian-preview.clearLog",
+        "title": "Obsidian Preview: Clear Log File"
       }
     ],
     "menus": {
