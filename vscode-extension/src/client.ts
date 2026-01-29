@@ -130,14 +130,25 @@ export class ObsidianClient {
 
       const id = ++this.requestId;
       const requestType = (request as { type?: string }).type || "unknown";
+      const filePath = (request as { filePath?: string }).filePath || "";
+      const fileName = filePath.split(/[/\\]/).pop() || filePath;
       const pendingCount = this.pendingRequests.size;
+      const startTime = Date.now();
       
-      console.log(`[ObsidianClient] Sending request #${id} type=${requestType}, pending=${pendingCount}`);
+      console.log(`[ObsidianClient] Sending request #${id} type=${requestType}, file=${fileName}, pending=${pendingCount}`);
       
-      // Timeout handling
+      // Timeout handling with detailed error
       const timeout = setTimeout(() => {
         this.pendingRequests.delete(id);
-        reject(new Error(`Timeout (10s) for ${requestType} request #${id}. Pending requests: ${this.pendingRequests.size}. Check Obsidian console for errors.`));
+        const elapsed = Date.now() - startTime;
+        const errorDetails = [
+          `Timeout after ${elapsed}ms`,
+          `Request: #${id} ${requestType}`,
+          `File: ${fileName}`,
+          `Pending: ${this.pendingRequests.size} other requests`,
+          `Hint: Check Obsidian console (Ctrl+Shift+I) for plugin errors or slow render warnings`,
+        ].join("\n  ");
+        reject(new Error(errorDetails));
       }, timeoutMs);
 
       this.pendingRequests.set(id, { 

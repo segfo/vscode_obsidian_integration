@@ -179,22 +179,30 @@ export class RenderServer {
 
     if (request.type === "render") {
       const fileName = request.filePath.split(/[/\\]/).pop() || request.filePath;
-      logger.debug(`Render request received: ${fileName}`);
+      const contentSize = request.content.length;
+      const startTime = Date.now();
+      logger.info(`[START] ${fileName} (${contentSize} chars)`);
       try {
         const result = await renderMarkdown(
           this.app,
           request.filePath,
           request.content
         );
-        logger.debug(`Render complete: ${fileName} (${result.html.length} bytes)`);
+        const elapsed = Date.now() - startTime;
+        logger.info(`[DONE] ${fileName} in ${elapsed}ms (${result.html.length} bytes)`);
         return {
           type: "render",
           html: result.html,
           css: result.css,
         };
       } catch (err) {
+        const elapsed = Date.now() - startTime;
         const errorMsg = String(err);
-        logger.error(`Render error for ${fileName}: ${errorMsg}`);
+        const stack = err instanceof Error ? err.stack : "";
+        logger.error(`[FAIL] ${fileName} after ${elapsed}ms: ${errorMsg}`);
+        if (stack) {
+          logger.error(`Stack: ${stack}`);
+        }
         return { type: "error", message: errorMsg };
       }
     }
