@@ -1,0 +1,32 @@
+name: Lint Obsidian Plugin
+
+on:
+  push:
+    paths:
+      - 'obsidian-plugin/**'
+  pull_request:
+    paths:
+      - 'obsidian-plugin/**'
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: obsidian-plugin
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: obsidian-plugin/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run ESLint
+        run: npx eslint src/
