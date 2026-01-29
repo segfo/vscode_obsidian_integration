@@ -38,6 +38,18 @@ export interface ErrorResponse {
 type RequestMessage = RenderRequest | ResolveRequest;
 type ResponseMessage = RenderResponse | ResolveResponse | ErrorResponse;
 
+export interface RenderServerSettings {
+  port: number;
+  renderTimeout: number;
+  renderGracePeriod: number;
+}
+
+interface PendingRender {
+  request: RenderRequest;
+  socket: Duplex;
+  startTime: number;
+}
+
 /**
  * Simple WebSocket server using Node.js built-in http module.
  * This avoids compatibility issues with the 'ws' package in Electron.
@@ -46,11 +58,16 @@ export class RenderServer {
   private server: Server | null = null;
   private clients: Set<Duplex> = new Set();
   private app: App;
-  private port: number;
+  private settings: RenderServerSettings;
+  
+  // Render queue state
+  private currentRender: PendingRender | null = null;
+  private pendingRender: { request: RenderRequest; socket: Duplex } | null = null;
+  private isProcessing = false;
 
-  constructor(app: App, port: number) {
+  constructor(app: App, settings: RenderServerSettings) {
     this.app = app;
-    this.port = port;
+    this.settings = settings;
   }
 
   async start(): Promise<void> {
@@ -83,9 +100,7 @@ export class RenderServer {
       socket.on("data", (buffer: Buffer) => {
         const message = this.decodeFrame(buffer);
         if (message) {
-          void this.handleMessage(message).then((response) => {
-            this.sendFrame(socket, JSON.stringify(response));
-          });
+          void this.handleMessage(message, socket);
         }
       });
 
@@ -98,7 +113,7 @@ export class RenderServer {
       });
     });
 
-    this.server.listen(this.port);
+    this.server.listen(this.settings.port);
   }
 
   stop(): void {
@@ -168,43 +183,19 @@ export class RenderServer {
     socket.write(Buffer.concat([header, payload]));
   }
 
-  private async handleMessage(data: string): Promise<ResponseMessage> {
+  private async handleMessage(data: string, socket: Duplex): Promise<void> {
     let request: RequestMessage;
     try {
       request = JSON.parse(data) as RequestMessage;
     } catch {
       logger.error("Invalid JSON received");
-      return { type: "error", message: "Invalid JSON" };
+      this.sendFrame(socket, JSON.stringify({ type: "error", message: "Invalid JSON" }));
+      return;
     }
 
     if (request.type === "render") {
-      const fileName = request.filePath.split(/[/\\]/).pop() || request.filePath;
-      const contentSize = request.content.length;
-      const startTime = Date.now();
-      logger.info(`[START] ${fileName} (${contentSize} chars)`);
-      try {
-        const result = await renderMarkdown(
-          this.app,
-          request.filePath,
-          request.content
-        );
-        const elapsed = Date.now() - startTime;
-        logger.info(`[DONE] ${fileName} in ${elapsed}ms (${result.html.length} bytes)`);
-        return {
-          type: "render",
-          html: result.html,
-          css: result.css,
-        };
-      } catch (err) {
-        const elapsed = Date.now() - startTime;
-        const errorMsg = String(err);
-        const stack = err instanceof Error ? err.stack : "";
-        logger.error(`[FAIL] ${fileName} after ${elapsed}ms: ${errorMsg}`);
-        if (stack) {
-          logger.error(`Stack: ${stack}`);
-        }
-        return { type: "error", message: errorMsg };
-      }
+      await this.handleRenderRequest(request, socket);
+      return;
     }
 
     if (request.type === "resolve") {
@@ -213,14 +204,95 @@ export class RenderServer {
         request.link,
         request.currentFile
       );
-      return {
+      this.sendFrame(socket, JSON.stringify({
         type: "resolve",
         displayText: result.displayText,
         targetPath: result.targetPath,
-      };
+      }));
+      return;
     }
 
     logger.warn(`Unknown request type: ${data}`);
-    return { type: "error", message: "Unknown request type" };
+    this.sendFrame(socket, JSON.stringify({ type: "error", message: "Unknown request type" }));
+  }
+
+  /**
+   * Handle render request with queue logic:
+   * - If no render is in progress, start immediately
+   * - If a render is in progress:
+   *   - Queue this request (replacing any existing queued request)
+   *   - If current render exceeds grace period, cancel and start new
+   */
+  private async handleRenderRequest(request: RenderRequest, socket: Duplex): Promise<void> {
+    const fileName = request.filePath.split(/[/\\]/).pop() || request.filePath;
+    
+    if (this.isProcessing) {
+      // Check if current render has exceeded grace period
+      if (this.currentRender) {
+        const elapsed = Date.now() - this.currentRender.startTime;
+        const gracePeriodMs = this.settings.renderGracePeriod * 1000;
+        
+        if (elapsed > gracePeriodMs) {
+          // Current render exceeded grace period, queue new request and it will be picked up
+          logger.info(`[QUEUE] ${fileName} (current render exceeded ${this.settings.renderGracePeriod}s grace period)`);
+        } else {
+          logger.debug(`[QUEUE] ${fileName} (waiting for current render, ${Math.round(elapsed/1000)}s elapsed)`);
+        }
+      }
+      
+      // Always queue the latest request (replaces any existing queued request)
+      this.pendingRender = { request, socket };
+      return;
+    }
+
+    await this.executeRender(request, socket);
+  }
+
+  private async executeRender(request: RenderRequest, socket: Duplex): Promise<void> {
+    const fileName = request.filePath.split(/[/\\]/).pop() || request.filePath;
+    const contentSize = request.content.length;
+    const startTime = Date.now();
+    
+    this.isProcessing = true;
+    this.currentRender = { request, socket, startTime };
+    
+    logger.info(`[START] ${fileName} (${contentSize} chars)`);
+    
+    try {
+      const result = await renderMarkdown(
+        this.app,
+        request.filePath,
+        request.content
+      );
+      const elapsed = Date.now() - startTime;
+      logger.info(`[DONE] ${fileName} in ${elapsed}ms (${result.html.length} bytes)`);
+      
+      this.sendFrame(socket, JSON.stringify({
+        type: "render",
+        html: result.html,
+        css: result.css,
+      }));
+    } catch (err) {
+      const elapsed = Date.now() - startTime;
+      const errorMsg = String(err);
+      const stack = err instanceof Error ? err.stack : "";
+      logger.error(`[FAIL] ${fileName} after ${elapsed}ms: ${errorMsg}`);
+      if (stack) {
+        logger.error(`Stack: ${stack}`);
+      }
+      this.sendFrame(socket, JSON.stringify({ type: "error", message: errorMsg }));
+    } finally {
+      this.isProcessing = false;
+      this.currentRender = null;
+      
+      // Process queued request if any
+      if (this.pendingRender) {
+        const pending = this.pendingRender;
+        this.pendingRender = null;
+        const pendingFileName = pending.request.filePath.split(/[/\\]/).pop() || pending.request.filePath;
+        logger.debug(`[DEQUEUE] Processing queued request: ${pendingFileName}`);
+        await this.executeRender(pending.request, pending.socket);
+      }
+    }
   }
 }

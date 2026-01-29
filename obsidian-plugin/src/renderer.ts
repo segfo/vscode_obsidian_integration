@@ -156,10 +156,24 @@ async function waitForMutations(
   });
 }
 
+// CSS cache - extracted once and reused
+let cachedCSS: string | null = null;
+let cssExtractedAt = 0;
+const CSS_CACHE_TTL = 60000; // 1 minute cache
+
 /**
- * Extract current Obsidian theme CSS.
+ * Extract current Obsidian theme CSS with caching.
+ * CSS is cached for 1 minute to avoid repeated extraction.
  */
 function extractThemeCSS(): string {
+  const now = Date.now();
+  
+  // Return cached CSS if still valid
+  if (cachedCSS !== null && (now - cssExtractedAt) < CSS_CACHE_TTL) {
+    return cachedCSS;
+  }
+  
+  logger.debug("Extracting CSS (cache miss or expired)");
   const styles: string[] = [];
 
   // Collect all stylesheets
@@ -176,7 +190,20 @@ function extractThemeCSS(): string {
     }
   }
 
-  return styles.join("\n");
+  cachedCSS = styles.join("\n");
+  cssExtractedAt = now;
+  logger.debug(`CSS extracted: ${cachedCSS.length} bytes, ${styles.length} rules`);
+  
+  return cachedCSS;
+}
+
+/**
+ * Clear CSS cache (call when theme changes).
+ */
+export function clearCSSCache(): void {
+  cachedCSS = null;
+  cssExtractedAt = 0;
+  logger.debug("CSS cache cleared");
 }
 
 /**
