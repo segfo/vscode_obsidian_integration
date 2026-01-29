@@ -19,5 +19,8 @@ export default defineConfig([
         BigInt: "readonly",
       },
     },
+    rules: {
+      "obsidianmd/ui/sentence-case": ["warn", { brands: ["Cursor"] }],
+    },
   },
 ]);
