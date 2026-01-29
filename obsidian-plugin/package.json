@@ -1,6 +1,6 @@
 {
   "name": "obsidian-for-cursor",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "Preview and navigate your Obsidian vault in Cursor/VS Code with full plugin support",
   "main": "main.js",
   "scripts": {

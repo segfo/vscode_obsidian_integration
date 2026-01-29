@@ -4,6 +4,7 @@ import {
   Component,
   TFile,
 } from "obsidian";
+import { logger } from "./logger";
 
 export interface RenderResult {
   html: string;
@@ -24,6 +25,9 @@ export async function renderMarkdown(
   filePath: string,
   content: string
 ): Promise<RenderResult> {
+  const fileName = filePath.split(/[/\\]/).pop() || filePath;
+  const startTime = Date.now();
+  
   const container = document.createElement("div");
   container.addClass("markdown-preview-view", "markdown-rendered", "obsidian-render-offscreen");
   document.body.appendChild(container);
@@ -34,6 +38,7 @@ export async function renderMarkdown(
   const file = app.vault.getAbstractFileByPath(filePath);
   const sourcePath = file instanceof TFile ? file.path : "";
 
+  const renderStart = Date.now();
   await MarkdownRenderer.render(
     app,
     content,
@@ -41,9 +46,12 @@ export async function renderMarkdown(
     sourcePath,
     component
   );
+  const renderTime = Date.now() - renderStart;
 
   // Wait for plugins to process (Admonition, Dataview, etc.)
-  await waitForPlugins(container);
+  const pluginStart = Date.now();
+  const pluginInfo = await waitForPlugins(container, fileName);
+  const pluginTime = Date.now() - pluginStart;
 
   const html = container.innerHTML;
   const css = extractThemeCSS();
@@ -52,24 +60,40 @@ export async function renderMarkdown(
   document.body.removeChild(container);
   component.unload();
 
+  const totalTime = Date.now() - startTime;
+  if (totalTime > 500) {
+    logger.warn(`Slow render: ${fileName} took ${totalTime}ms (render: ${renderTime}ms, plugins: ${pluginTime}ms) [${pluginInfo}]`);
+  }
+
   return { html, css };
 }
 
 /**
  * Wait for plugins to finish processing the container.
  * Only waits if plugin content is detected.
+ * Returns a string describing what plugins were detected.
  */
-async function waitForPlugins(container: HTMLElement): Promise<void> {
+async function waitForPlugins(container: HTMLElement, fileName: string): Promise<string> {
   // Check if page has plugin content that needs waiting
   const hasDataview = container.querySelector(".block-language-dataview, .dataview") !== null;
   const hasAdmonition = container.querySelector(".callout, .admonition, .block-language-ad-") !== null;
   const hasEmbed = container.querySelector(".internal-embed") !== null;
+  const hasTableExtended = container.querySelector(".block-language-tx, .table-extended") !== null;
   
-  if (!hasDataview && !hasAdmonition && !hasEmbed) {
+  const detected: string[] = [];
+  if (hasDataview) detected.push("dataview");
+  if (hasAdmonition) detected.push("callout");
+  if (hasEmbed) detected.push("embed");
+  if (hasTableExtended) detected.push("table-extended");
+  
+  if (detected.length === 0) {
     // Simple page - minimal wait (just let render complete)
     await new Promise(r => setTimeout(r, 50));
-    return;
+    return "simple";
   }
+  
+  const pluginInfo = detected.join("+");
+  logger.debug(`${fileName}: detected [${pluginInfo}]`);
   
   // Has plugins - wait for mutations to settle
   // Embed needs more time because it loads external content
@@ -83,9 +107,12 @@ async function waitForPlugins(container: HTMLElement): Promise<void> {
     for (let retry = 0; retry < 3; retry++) {
       const emptySpans = container.querySelectorAll("td span:empty, .dataview span:empty");
       if (emptySpans.length === 0) break;
+      logger.debug(`${fileName}: dataview retry ${retry + 1}, ${emptySpans.length} empty spans`);
       await new Promise(r => setTimeout(r, 300));
     }
   }
+  
+  return pluginInfo;
 }
 
 /**
