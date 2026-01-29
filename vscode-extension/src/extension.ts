@@ -1,16 +1,21 @@
 import * as vscode from "vscode";
+import * as path from "path";
+import * as fs from "fs";
 import { ObsidianClient } from "./client";
 import { EditorWatcher } from "./watcher";
 import { PreviewPanel } from "./preview";
 import { EditorDecorator } from "./decorator";
 import { WikilinkHoverProvider } from "./hover";
+import { WikilinkLinkProvider } from "./linkProvider";
 import { logger, Logger } from "./logger";
 
 let client: ObsidianClient;
 let watcher: EditorWatcher;
 let decorator: EditorDecorator;
 let hoverProvider: WikilinkHoverProvider;
+let linkProvider: WikilinkLinkProvider;
 let hoverProviderDisposable: vscode.Disposable | undefined;
+let linkProviderDisposable: vscode.Disposable | undefined;
 let previewPanel: PreviewPanel | undefined;
 
 export function activate(context: vscode.ExtensionContext): void {
@@ -21,6 +26,7 @@ export function activate(context: vscode.ExtensionContext): void {
   watcher = new EditorWatcher();
   decorator = new EditorDecorator();
   hoverProvider = new WikilinkHoverProvider();
+  linkProvider = new WikilinkLinkProvider();
   
   // Register hover provider for markdown files
   hoverProviderDisposable = vscode.languages.registerHoverProvider(
@@ -28,6 +34,13 @@ export function activate(context: vscode.ExtensionContext): void {
     hoverProvider
   );
   context.subscriptions.push(hoverProviderDisposable);
+  
+  // Register link provider for Ctrl+Click navigation
+  linkProviderDisposable = vscode.languages.registerDocumentLinkProvider(
+    { language: "markdown" },
+    linkProvider
+  );
+  context.subscriptions.push(linkProviderDisposable);
 
   // Command: Connect to Obsidian
   const connectCommand = vscode.commands.registerCommand(
@@ -87,6 +100,14 @@ export function activate(context: vscode.ExtensionContext): void {
     () => {
       Logger.clearLog();
       vscode.window.showInformationMessage("Log file cleared");
+    }
+  );
+
+  // Command: Navigate to wikilink (used by DocumentLinkProvider)
+  const navigateToLinkCommand = vscode.commands.registerCommand(
+    "obsidian-preview.navigateToLink",
+    async (args: { target: string; sourcePath: string }) => {
+      await navigateToWikilink(args.target, args.sourcePath);
     }
   );
 
@@ -189,6 +210,7 @@ export function activate(context: vscode.ExtensionContext): void {
     openDebugCommand,
     openLogCommand,
     clearLogCommand,
+    navigateToLinkCommand,
     editorChangeDisposable
   );
 
@@ -265,10 +287,15 @@ async function getHoverPreview(targetPath: string): Promise<{ html: string; css:
   }
 }
 
-async function handleLinkClick(targetPath: string): Promise<void> {
+/**
+ * Navigate to a wikilink target, with option to create file if not found.
+ * @param targetPath The link target (e.g., "File", "File#Heading", "Folder/File")
+ * @param sourcePath The path of the source file containing the link
+ */
+async function navigateToWikilink(targetPath: string, sourcePath?: string): Promise<void> {
   if (!targetPath) return;
 
-  console.log("Link clicked:", targetPath);
+  console.log("[Navigate] target:", targetPath, "source:", sourcePath);
 
   // Parse the link - handle [[File#Heading]] format
   let filePart = targetPath;
@@ -281,33 +308,8 @@ async function handleLinkClick(targetPath: string): Promise<void> {
   }
   
   // If only anchor (e.g., "#Code"), it's a link within the same file
-  console.log("[LinkClick] filePart:", filePart, "anchorPart:", anchorPart);
   if (!filePart && anchorPart) {
-    console.log("[LinkClick] Same-file anchor detected:", anchorPart);
-    const editor = vscode.window.activeTextEditor;
-    if (editor) {
-      const doc = editor.document;
-      const text = doc.getText();
-      const lines = text.split("\n");
-      
-      // Search for heading that matches the anchor
-      const anchorLower = anchorPart.toLowerCase().replace(/-/g, " ");
-      for (let i = 0; i < lines.length; i++) {
-        const line = lines[i];
-        // Match headings: # Heading, ## Heading, etc.
-        const headingMatch = line.match(/^#+\s+(.+)$/);
-        if (headingMatch) {
-          const headingText = headingMatch[1].toLowerCase().trim();
-          if (headingText === anchorLower || headingText.replace(/\s+/g, "-") === anchorPart.toLowerCase()) {
-            // Found the heading, navigate to it
-            const position = new vscode.Position(i, 0);
-            editor.selection = new vscode.Selection(position, position);
-            editor.revealRange(new vscode.Range(position, position), vscode.TextEditorRevealType.AtTop);
-            break;
-          }
-        }
-      }
-    }
+    await navigateToAnchor(anchorPart);
     return;
   }
   
@@ -327,37 +329,98 @@ async function handleLinkClick(targetPath: string): Promise<void> {
   }
 
   if (files.length > 0) {
-    console.log("Found file:", files[0].fsPath);
+    // File found - open it
     const doc = await vscode.workspace.openTextDocument(files[0]);
     const editor = await vscode.window.showTextDocument(doc, vscode.ViewColumn.One);
     
-    // If there's an anchor, try to navigate to it
+    // If there's an anchor, navigate to it
     if (anchorPart) {
-      const text = doc.getText();
-      const lines = text.split("\n");
-      
-      // Search for heading that matches the anchor
-      const anchorLower = anchorPart.toLowerCase().replace(/-/g, " ");
-      for (let i = 0; i < lines.length; i++) {
-        const line = lines[i];
-        // Match headings: # Heading, ## Heading, etc.
-        const headingMatch = line.match(/^#+\s+(.+)$/);
-        if (headingMatch) {
-          const headingText = headingMatch[1].toLowerCase().trim();
-          if (headingText === anchorLower || headingText.replace(/\s+/g, "-") === anchorPart.toLowerCase()) {
-            // Found the heading, navigate to it
-            const position = new vscode.Position(i, 0);
-            editor.selection = new vscode.Selection(position, position);
-            editor.revealRange(new vscode.Range(position, position), vscode.TextEditorRevealType.AtTop);
-            break;
-          }
-        }
-      }
+      await navigateToAnchorInEditor(editor, anchorPart);
     }
   } else {
-    console.log("File not found:", searchPath);
-    vscode.window.showWarningMessage(`File not found: ${targetPath}`);
+    // File not found - ask to create
+    await promptCreateFile(searchPath, sourcePath);
   }
+}
+
+/**
+ * Navigate to an anchor in the current editor.
+ */
+async function navigateToAnchor(anchor: string): Promise<void> {
+  const editor = vscode.window.activeTextEditor;
+  if (!editor) return;
+  
+  await navigateToAnchorInEditor(editor, anchor);
+}
+
+/**
+ * Navigate to an anchor (heading) in the given editor.
+ */
+async function navigateToAnchorInEditor(editor: vscode.TextEditor, anchor: string): Promise<void> {
+  const doc = editor.document;
+  const text = doc.getText();
+  const lines = text.split("\n");
+  
+  const anchorLower = anchor.toLowerCase().replace(/-/g, " ");
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const headingMatch = line.match(/^#+\s+(.+)$/);
+    if (headingMatch) {
+      const headingText = headingMatch[1].toLowerCase().trim();
+      if (headingText === anchorLower || headingText.replace(/\s+/g, "-") === anchor.toLowerCase()) {
+        const position = new vscode.Position(i, 0);
+        editor.selection = new vscode.Selection(position, position);
+        editor.revealRange(new vscode.Range(position, position), vscode.TextEditorRevealType.AtTop);
+        break;
+      }
+    }
+  }
+}
+
+/**
+ * Prompt user to create a new file when link target doesn't exist.
+ */
+async function promptCreateFile(fileName: string, sourcePath?: string): Promise<void> {
+  const choice = await vscode.window.showWarningMessage(
+    `File "${fileName}" does not exist. Create it?`,
+    "Yes",
+    "No"
+  );
+  
+  if (choice !== "Yes") return;
+  
+  // Determine target directory (same as source file, or workspace root)
+  let targetDir: string;
+  if (sourcePath) {
+    targetDir = path.dirname(sourcePath);
+  } else {
+    const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+    if (!workspaceFolder) {
+      vscode.window.showErrorMessage("No workspace folder open");
+      return;
+    }
+    targetDir = workspaceFolder.uri.fsPath;
+  }
+  
+  const newFilePath = path.join(targetDir, fileName);
+  
+  // Create the file with a basic template
+  const fileNameWithoutExt = fileName.replace(/\.md$/, "");
+  const content = `# ${fileNameWithoutExt}\n\n`;
+  
+  try {
+    fs.writeFileSync(newFilePath, content, "utf8");
+    const doc = await vscode.workspace.openTextDocument(newFilePath);
+    await vscode.window.showTextDocument(doc, vscode.ViewColumn.One);
+    vscode.window.showInformationMessage(`Created: ${fileName}`);
+  } catch (err) {
+    vscode.window.showErrorMessage(`Failed to create file: ${err}`);
+  }
+}
+
+async function handleLinkClick(targetPath: string): Promise<void> {
+  // Use shared navigation logic, but without source path (preview doesn't have it)
+  await navigateToWikilink(targetPath, vscode.window.activeTextEditor?.document.uri.fsPath);
 }
 
 export function deactivate(): void {
