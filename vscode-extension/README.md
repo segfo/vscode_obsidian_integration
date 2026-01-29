@@ -54,14 +54,14 @@ If you find this useful, consider supporting the project ☕
 
 [![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-support-yellow?logo=buy-me-a-coffee&style=for-the-badge)](https://buymeacoffee.com/px39n)
 
-<details>
+<details open>
 <summary>支付宝 / Alipay</summary>
 
 <img src="assets/alipay.jpg" width="200">
 
 </details>
 
-<details>
+<details open>
 <summary>微信支付 / WeChat Pay</summary>
 
 <img src="assets/wechat.jpg" width="200">

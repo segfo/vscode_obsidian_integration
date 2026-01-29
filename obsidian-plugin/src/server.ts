@@ -79,11 +79,12 @@ export class RenderServer {
       socket.write(responseHeaders);
       this.clients.add(socket);
 
-      socket.on("data", async (buffer: Buffer) => {
+      socket.on("data", (buffer: Buffer) => {
         const message = this.decodeFrame(buffer);
         if (message) {
-          const response = await this.handleMessage(message);
-          this.sendFrame(socket, JSON.stringify(response));
+          void this.handleMessage(message).then((response) => {
+            this.sendFrame(socket, JSON.stringify(response));
+          });
         }
       });
 
@@ -127,11 +128,11 @@ export class RenderServer {
 
     let maskKey: Buffer | null = null;
     if (isMasked) {
-      maskKey = buffer.slice(offset, offset + 4);
+      maskKey = buffer.subarray(offset, offset + 4);
       offset += 4;
     }
 
-    const payload = buffer.slice(offset, offset + payloadLength);
+    const payload = buffer.subarray(offset, offset + payloadLength);
 
     if (maskKey) {
       for (let i = 0; i < payload.length; i++) {
@@ -169,7 +170,7 @@ export class RenderServer {
   private async handleMessage(data: string): Promise<ResponseMessage> {
     let request: RequestMessage;
     try {
-      request = JSON.parse(data);
+      request = JSON.parse(data) as RequestMessage;
     } catch {
       return { type: "error", message: "Invalid JSON" };
     }

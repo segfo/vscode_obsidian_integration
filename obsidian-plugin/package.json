@@ -1,13 +1,18 @@
 {
   "name": "obsidian-for-cursor",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Preview and navigate your Obsidian vault in Cursor/VS Code with full plugin support",
   "main": "main.js",
   "scripts": {
     "dev": "node esbuild.config.mjs",
     "build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production"
   },
-  "keywords": ["obsidian", "markdown", "render", "websocket"],
+  "keywords": [
+    "obsidian",
+    "markdown",
+    "render",
+    "websocket"
+  ],
   "author": "px39n",
   "license": "MIT",
   "repository": {
@@ -17,7 +22,10 @@
   "devDependencies": {
     "@types/node": "^20.0.0",
     "@types/ws": "^8.18.1",
+    "@typescript-eslint/parser": "^8.54.0",
     "esbuild": "^0.20.0",
+    "eslint": "^9.39.2",
+    "eslint-plugin-obsidianmd": "^0.1.9",
     "obsidian": "latest",
     "tslib": "^2.8.1",
     "typescript": "^5.0.0"
