@@ -87,18 +87,16 @@ async function waitForPlugins(container: HTMLElement, fileName: string): Promise
   if (hasTableExtended) detected.push("table-extended");
   
   if (detected.length === 0) {
-    // Simple page - minimal wait (just let render complete)
-    await new Promise(r => setTimeout(r, 50));
+    // Simple page - no waiting needed
     return "simple";
   }
   
   const pluginInfo = detected.join("+");
   logger.debug(`${fileName}: detected [${pluginInfo}]`);
   
-  // Has plugins - wait for mutations to settle
-  // Embed needs more time because it loads external content
-  const debounceMs = hasDataview ? 300 : (hasEmbed ? 200 : 100);
-  const maxWaitMs = hasDataview ? 1500 : (hasEmbed ? 1000 : 500);
+  // Has plugins - wait for mutations to settle (shorter times for better responsiveness)
+  const debounceMs = hasDataview ? 100 : 50;
+  const maxWaitMs = hasDataview ? 500 : 200;
   
   await waitForMutations(container, debounceMs, maxWaitMs);
   
