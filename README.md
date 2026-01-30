@@ -35,8 +35,7 @@ Settings → Community Plugins → Browse → **"Cursor Integration"** → Insta
 
 
 ### 2. Cursor / VS Code Extension
-- **Cursor**: [**Install from OpenVSX**](https://open-vsx.org/extension/px39n/obsidianpreview) or search `obsidianpreview`
-- **VS Code**: [**Install from Marketplace**](https://marketplace.visualstudio.com/items?itemName=px39n.obsidianpreview)
+Search `obsidianpreview` in Extensions and install
 
 ---
 
