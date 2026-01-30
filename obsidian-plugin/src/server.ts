@@ -3,7 +3,7 @@ import type { Server, IncomingMessage } from "http";
 import type { Duplex } from "stream";
 import { createServer } from "http";
 import { createHash } from "crypto";
-import { renderMarkdown, resolveWikilink } from "./renderer";
+import { renderMarkdownImmediate, resolveWikilink, extractThemeCSS } from "./renderer";
 import { logger } from "./logger";
 
 export interface RenderRequest {
@@ -26,6 +26,8 @@ export interface RenderResponse {
   type: "render";
   html: string;
   css: string;
+  filePath: string;
+  isUpdate?: boolean;
 }
 
 export interface ResolveResponse {
@@ -37,7 +39,9 @@ export interface ResolveResponse {
 export interface SettingsResponse {
   type: "settings";
   renderTimeout: number;
-  renderGracePeriod: number;
+  typingDelay: number;
+  updateDelay: number;
+  monitorTime: number;
 }
 
 export interface ErrorResponse {
@@ -46,23 +50,18 @@ export interface ErrorResponse {
 }
 
 type RequestMessage = RenderRequest | ResolveRequest | SettingsRequest;
-type ResponseMessage = RenderResponse | ResolveResponse | ErrorResponse;
 
 export interface RenderServerSettings {
   port: number;
   renderTimeout: number;
-  renderGracePeriod: number;
-}
-
-interface PendingRender {
-  request: RenderRequest;
-  socket: Duplex;
-  startTime: number;
+  typingDelay: number;
+  updateDelay: number;
+  monitorTime: number;
 }
 
 /**
  * Simple WebSocket server using Node.js built-in http module.
- * This avoids compatibility issues with the 'ws' package in Electron.
+ * Supports streaming updates for render results.
  */
 export class RenderServer {
   private server: Server | null = null;
@@ -70,10 +69,20 @@ export class RenderServer {
   private app: App;
   private settings: RenderServerSettings;
   
-  // Render queue state
-  private currentRender: PendingRender | null = null;
+  // Current render state
+  private currentFilePath: string | null = null;
+  private currentSocket: Duplex | null = null;
+  private currentMonitor: { 
+    observer: MutationObserver; 
+    timer: ReturnType<typeof setTimeout>; 
+    debounceTimer: ReturnType<typeof setTimeout> | null;
+    container: HTMLElement;
+    sessionId: number;
+  } | null = null;
   private pendingRender: { request: RenderRequest; socket: Duplex } | null = null;
   private isProcessing = false;
+  private lastSentHtml: string = "";
+  private monitorSessionId = 0;
 
   constructor(app: App, settings: RenderServerSettings) {
     this.app = app;
@@ -90,7 +99,6 @@ export class RenderServer {
         return;
       }
 
-      // WebSocket handshake
       const acceptKey = createHash("sha1")
         .update(key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11")
         .digest("base64");
@@ -116,6 +124,9 @@ export class RenderServer {
 
       socket.on("close", () => {
         this.clients.delete(socket);
+        if (this.currentSocket === socket) {
+          this.stopMonitoring();
+        }
       });
 
       socket.on("error", () => {
@@ -127,12 +138,28 @@ export class RenderServer {
   }
 
   stop(): void {
+    this.stopMonitoring();
     for (const client of this.clients) {
       client.destroy();
     }
     this.clients.clear();
     this.server?.close();
     this.server = null;
+  }
+
+  private stopMonitoring(): void {
+    if (this.currentMonitor) {
+      this.currentMonitor.observer.disconnect();
+      clearTimeout(this.currentMonitor.timer);
+      if (this.currentMonitor.debounceTimer) {
+        clearTimeout(this.currentMonitor.debounceTimer);
+      }
+      document.body.removeChild(this.currentMonitor.container);
+      this.currentMonitor = null;
+    }
+    this.currentFilePath = null;
+    this.currentSocket = null;
+    this.lastSentHtml = "";
   }
 
   private decodeFrame(buffer: Buffer): string | null {
@@ -147,7 +174,6 @@ export class RenderServer {
       payloadLength = buffer.readUInt16BE(2);
       offset = 4;
     } else if (payloadLength === 127) {
-      // For simplicity, we don't handle very large payloads
       payloadLength = buffer.readUInt32BE(6);
       offset = 10;
     }
@@ -176,7 +202,7 @@ export class RenderServer {
     let header: Buffer;
     if (payloadLength < 126) {
       header = Buffer.alloc(2);
-      header[0] = 0x81; // FIN + text frame
+      header[0] = 0x81;
       header[1] = payloadLength;
     } else if (payloadLength < 65536) {
       header = Buffer.alloc(4);
@@ -227,7 +253,9 @@ export class RenderServer {
       this.sendFrame(socket, JSON.stringify({
         type: "settings",
         renderTimeout: this.settings.renderTimeout,
-        renderGracePeriod: this.settings.renderGracePeriod,
+        typingDelay: this.settings.typingDelay,
+        updateDelay: this.settings.updateDelay,
+        monitorTime: this.settings.monitorTime,
       }));
       return;
     }
@@ -236,31 +264,19 @@ export class RenderServer {
     this.sendFrame(socket, JSON.stringify({ type: "error", message: "Unknown request type" }));
   }
 
-  /**
-   * Handle render request with queue logic:
-   * - If no render is in progress, start immediately
-   * - If a render is in progress:
-   *   - Queue this request (replacing any existing queued request)
-   *   - If current render exceeds grace period, cancel and start new
-   */
   private async handleRenderRequest(request: RenderRequest, socket: Duplex): Promise<void> {
     const fileName = request.filePath.split(/[/\\]/).pop() || request.filePath;
+    const isDifferentFile = this.currentFilePath !== request.filePath;
+    
+    // If switching files, stop current monitoring
+    if (isDifferentFile && this.currentMonitor) {
+      logger.debug(`[SWITCH] ${fileName} (stopping previous monitor)`);
+      this.stopMonitoring();
+    }
     
     if (this.isProcessing) {
-      // Check if current render has exceeded grace period
-      if (this.currentRender) {
-        const elapsed = Date.now() - this.currentRender.startTime;
-        const gracePeriodMs = this.settings.renderGracePeriod * 1000;
-        
-        if (elapsed > gracePeriodMs) {
-          // Current render exceeded grace period, queue new request and it will be picked up
-          logger.info(`[QUEUE] ${fileName} (current render exceeded ${this.settings.renderGracePeriod}s grace period)`);
-        } else {
-          logger.debug(`[QUEUE] ${fileName} (waiting for current render, ${Math.round(elapsed/1000)}s elapsed)`);
-        }
-      }
-      
-      // Always queue the latest request (replaces any existing queued request)
+      // Queue this request (replaces any existing queued request)
+      logger.debug(`[QUEUE] ${fileName}`);
       this.pendingRender = { request, socket };
       return;
     }
@@ -274,45 +290,130 @@ export class RenderServer {
     const startTime = Date.now();
     
     this.isProcessing = true;
-    this.currentRender = { request, socket, startTime };
+    this.currentFilePath = request.filePath;
+    this.currentSocket = socket;
     
     logger.info(`[START] ${fileName} (${contentSize} chars)`);
     
     try {
-      const result = await renderMarkdown(
+      // Render immediately (no plugin waiting)
+      const { container, html } = await renderMarkdownImmediate(
         this.app,
         request.filePath,
         request.content
       );
-      const elapsed = Date.now() - startTime;
-      logger.info(`[DONE] ${fileName} in ${elapsed}ms (${result.html.length} bytes)`);
       
+      const elapsed = Date.now() - startTime;
+      const css = extractThemeCSS();
+      
+      logger.info(`[DONE] ${fileName} in ${elapsed}ms (${html.length} bytes)`);
+      
+      // Send initial result
+      this.lastSentHtml = html;
       this.sendFrame(socket, JSON.stringify({
         type: "render",
-        html: result.html,
-        css: result.css,
+        html,
+        css,
+        filePath: request.filePath,
+        isUpdate: false,
       }));
+      
+      // Start monitoring for DOM changes
+      this.startMonitoring(container, request.filePath, socket, css);
+      
     } catch (err) {
       const elapsed = Date.now() - startTime;
       const errorMsg = String(err);
-      const stack = err instanceof Error ? err.stack : "";
       logger.error(`[FAIL] ${fileName} after ${elapsed}ms: ${errorMsg}`);
-      if (stack) {
-        logger.error(`Stack: ${stack}`);
-      }
       this.sendFrame(socket, JSON.stringify({ type: "error", message: errorMsg }));
+      this.stopMonitoring();
     } finally {
       this.isProcessing = false;
-      this.currentRender = null;
       
       // Process queued request if any
       if (this.pendingRender) {
         const pending = this.pendingRender;
         this.pendingRender = null;
+        
+        // If same file, stop monitoring before re-rendering
+        if (pending.request.filePath === this.currentFilePath) {
+          this.stopMonitoring();
+        }
+        
         const pendingFileName = pending.request.filePath.split(/[/\\]/).pop() || pending.request.filePath;
-        logger.debug(`[DEQUEUE] Processing queued request: ${pendingFileName}`);
+        logger.debug(`[DEQUEUE] ${pendingFileName}`);
         await this.executeRender(pending.request, pending.socket);
       }
     }
+  }
+
+  private startMonitoring(container: HTMLElement, filePath: string, socket: Duplex, css: string): void {
+    const fileName = filePath.split(/[/\\]/).pop() || filePath;
+    const updateDelayMs = this.settings.updateDelay * 1000;
+    const monitorTimeMs = this.settings.monitorTime * 1000;
+    
+    // Create unique session ID for this monitoring session
+    const sessionId = ++this.monitorSessionId;
+    
+    const sendUpdate = () => {
+      // Check if this session is still active
+      if (!this.currentMonitor || this.currentMonitor.sessionId !== sessionId) {
+        return;
+      }
+      
+      const newHtml = container.innerHTML;
+      if (newHtml !== this.lastSentHtml) {
+        logger.debug(`[UPDATE] ${fileName} (${newHtml.length} bytes)`);
+        this.lastSentHtml = newHtml;
+        this.sendFrame(socket, JSON.stringify({
+          type: "render",
+          html: newHtml,
+          css,
+          filePath,
+          isUpdate: true,
+        }));
+      }
+    };
+    
+    const observer = new MutationObserver(() => {
+      // Check if this session is still active
+      if (!this.currentMonitor || this.currentMonitor.sessionId !== sessionId) {
+        return;
+      }
+      
+      if (this.currentMonitor.debounceTimer) {
+        clearTimeout(this.currentMonitor.debounceTimer);
+      }
+      this.currentMonitor.debounceTimer = setTimeout(sendUpdate, updateDelayMs);
+    });
+    
+    observer.observe(container, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      characterData: true,
+    });
+    
+    // Stop monitoring after monitorTime
+    const timer = setTimeout(() => {
+      // Check if this session is still active
+      if (!this.currentMonitor || this.currentMonitor.sessionId !== sessionId) {
+        return;
+      }
+      
+      logger.debug(`[MONITOR END] ${fileName}`);
+      // Send final update before stopping
+      sendUpdate();
+      // Cleanup
+      observer.disconnect();
+      if (this.currentMonitor.debounceTimer) {
+        clearTimeout(this.currentMonitor.debounceTimer);
+      }
+      document.body.removeChild(container);
+      this.currentMonitor = null;
+    }, monitorTimeMs);
+    
+    this.currentMonitor = { observer, timer, debounceTimer: null, container, sessionId };
+    logger.debug(`[MONITOR START] ${fileName} #${sessionId} (${this.settings.monitorTime}s)`);
   }
 }

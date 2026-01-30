@@ -5,6 +5,8 @@ export interface RenderResponse {
   type: "render";
   html: string;
   css: string;
+  filePath?: string;
+  isUpdate?: boolean;
 }
 
 export interface ResolveResponse {
@@ -16,7 +18,9 @@ export interface ResolveResponse {
 export interface SettingsResponse {
   type: "settings";
   renderTimeout: number;
-  renderGracePeriod: number;
+  typingDelay: number;
+  updateDelay: number;
+  monitorTime: number;
 }
 
 export interface ErrorResponse {
@@ -25,6 +29,8 @@ export interface ErrorResponse {
 }
 
 type ResponseMessage = RenderResponse | ResolveResponse | SettingsResponse | ErrorResponse;
+
+export type RenderUpdateCallback = (response: RenderResponse) => void;
 
 export class ObsidianClient {
   private ws: WebSocket | null = null;
@@ -35,10 +41,16 @@ export class ObsidianClient {
   > = new Map();
   private requestId = 0;
   private disconnectCallbacks: Array<() => void> = [];
-  private renderTimeoutMs = 60000; // Default 60s, updated from OBS settings
+  private renderUpdateCallbacks: RenderUpdateCallback[] = [];
+  private renderTimeoutMs = 60000;
+  private typingDelayMs = 300;
 
   constructor(port: number) {
     this.port = port;
+  }
+
+  getTypingDelayMs(): number {
+    return this.typingDelayMs;
   }
 
   async connect(): Promise<void> {
@@ -63,6 +75,14 @@ export class ObsidianClient {
       this.ws.on("message", (data: Buffer) => {
         try {
           const response: ResponseMessage = JSON.parse(data.toString());
+          
+          // Handle render updates (pushed from server)
+          if (response.type === "render" && response.isUpdate) {
+            console.log(`[ObsidianClient] Render update for: ${response.filePath}`);
+            this.renderUpdateCallbacks.forEach((cb) => cb(response));
+            return;
+          }
+          
           console.log(`[ObsidianClient] Received response type=${response.type}, pending=${this.pendingRequests.size}`);
           
           // Simple response handling (no request ID in current protocol)
@@ -126,12 +146,17 @@ export class ObsidianClient {
     this.disconnectCallbacks.push(callback);
   }
 
+  onRenderUpdate(callback: RenderUpdateCallback): void {
+    this.renderUpdateCallbacks.push(callback);
+  }
+
   private async fetchSettings(): Promise<void> {
     try {
       const response = await this.sendRequest({ type: "getSettings" }, 5000);
       if (response.type === "settings") {
         this.renderTimeoutMs = response.renderTimeout * 1000;
-        console.log(`[ObsidianClient] Settings received: renderTimeout=${response.renderTimeout}s`);
+        this.typingDelayMs = response.typingDelay * 1000;
+        console.log(`[ObsidianClient] Settings: renderTimeout=${response.renderTimeout}s, typingDelay=${response.typingDelay}s`);
       }
     } catch (err) {
       console.warn("[ObsidianClient] Failed to fetch settings, using defaults:", err);

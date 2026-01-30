@@ -42,6 +42,15 @@ export function activate(context: vscode.ExtensionContext): void {
   );
   context.subscriptions.push(linkProviderDisposable);
 
+  // Handle render updates (pushed from server)
+  client.onRenderUpdate((response) => {
+    if (previewPanel && response.filePath) {
+      const fileName = response.filePath.split(/[/\\]/).pop()?.replace(/\.md$/i, '') || '';
+      previewPanel.updateContent(response.html, response.css, fileName);
+      logger.debug(`Render update applied for: ${fileName}`);
+    }
+  });
+
   // Command: Connect to Obsidian
   const connectCommand = vscode.commands.registerCommand(
     "obsidian-preview.connect",

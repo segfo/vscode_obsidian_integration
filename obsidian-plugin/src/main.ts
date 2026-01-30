@@ -5,18 +5,24 @@ import { exec } from "child_process";
 
 const DEFAULT_PORT = 27123;
 const DEFAULT_RENDER_TIMEOUT = 30;
-const DEFAULT_RENDER_GRACE_PERIOD = 5;
+const DEFAULT_TYPING_DELAY = 0.3;
+const DEFAULT_UPDATE_DELAY = 0.2;
+const DEFAULT_MONITOR_TIME = 5;
 
 interface CursorIntegrationSettings {
   port: number;
   renderTimeout: number;
-  renderGracePeriod: number;
+  typingDelay: number;
+  updateDelay: number;
+  monitorTime: number;
 }
 
 const DEFAULT_SETTINGS: CursorIntegrationSettings = {
   port: DEFAULT_PORT,
   renderTimeout: DEFAULT_RENDER_TIMEOUT,
-  renderGracePeriod: DEFAULT_RENDER_GRACE_PERIOD,
+  typingDelay: DEFAULT_TYPING_DELAY,
+  updateDelay: DEFAULT_UPDATE_DELAY,
+  monitorTime: DEFAULT_MONITOR_TIME,
 };
 
 export default class ObsidianRenderServerPlugin extends Plugin {
@@ -121,31 +127,63 @@ class CursorIntegrationSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("Render timeout")
-      .setDesc("Maximum time (seconds) to wait for a render response before showing an error")
+      .setDesc("Maximum time (seconds) to wait for render() to return")
       .addText((text) =>
         text
           .setPlaceholder("30")
           .setValue(String(this.plugin.settings.renderTimeout))
           .onChange(async (value) => {
-            const timeout = parseInt(value, 10);
-            if (!isNaN(timeout) && timeout > 0) {
-              this.plugin.settings.renderTimeout = timeout;
+            const val = parseFloat(value);
+            if (!isNaN(val) && val > 0) {
+              this.plugin.settings.renderTimeout = val;
               await this.plugin.saveSettings();
             }
           })
       );
 
     new Setting(containerEl)
-      .setName("Render grace period")
-      .setDesc("When a new render request arrives, wait for the current render to finish if it has been running less than this time (seconds)")
+      .setName("Typing delay")
+      .setDesc("Wait this long (seconds) after user stops typing before sending render request")
+      .addText((text) =>
+        text
+          .setPlaceholder("0.3")
+          .setValue(String(this.plugin.settings.typingDelay))
+          .onChange(async (value) => {
+            const val = parseFloat(value);
+            if (!isNaN(val) && val >= 0) {
+              this.plugin.settings.typingDelay = val;
+              await this.plugin.saveSettings();
+            }
+          })
+      );
+
+    new Setting(containerEl)
+      .setName("Update delay")
+      .setDesc("After DOM changes, wait this long (seconds) with no new changes before sending update")
+      .addText((text) =>
+        text
+          .setPlaceholder("0.2")
+          .setValue(String(this.plugin.settings.updateDelay))
+          .onChange(async (value) => {
+            const val = parseFloat(value);
+            if (!isNaN(val) && val >= 0) {
+              this.plugin.settings.updateDelay = val;
+              await this.plugin.saveSettings();
+            }
+          })
+      );
+
+    new Setting(containerEl)
+      .setName("Monitor time")
+      .setDesc("How long (seconds) to monitor DOM for changes after render completes")
       .addText((text) =>
         text
           .setPlaceholder("5")
-          .setValue(String(this.plugin.settings.renderGracePeriod))
+          .setValue(String(this.plugin.settings.monitorTime))
           .onChange(async (value) => {
-            const gracePeriod = parseInt(value, 10);
-            if (!isNaN(gracePeriod) && gracePeriod >= 0) {
-              this.plugin.settings.renderGracePeriod = gracePeriod;
+            const val = parseFloat(value);
+            if (!isNaN(val) && val >= 0) {
+              this.plugin.settings.monitorTime = val;
               await this.plugin.saveSettings();
             }
           })

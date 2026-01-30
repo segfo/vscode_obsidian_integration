@@ -11,14 +11,52 @@ export interface RenderResult {
   css: string;
 }
 
+export interface ImmediateRenderResult {
+  container: HTMLElement;
+  html: string;
+}
+
 export interface LinkInfo {
   displayText: string;
   targetPath: string;
 }
 
 /**
+ * Render markdown content immediately without waiting for plugins.
+ * Returns the container element for monitoring.
+ * The container is attached to DOM and should be removed by caller after monitoring ends.
+ */
+export async function renderMarkdownImmediate(
+  app: App,
+  filePath: string,
+  content: string
+): Promise<ImmediateRenderResult> {
+  const container = document.createElement("div");
+  container.addClass("markdown-preview-view", "markdown-rendered", "obsidian-render-offscreen");
+  document.body.appendChild(container);
+
+  const component = new Component();
+  component.load();
+
+  const file = app.vault.getAbstractFileByPath(filePath);
+  const sourcePath = file instanceof TFile ? file.path : "";
+
+  await MarkdownRenderer.render(
+    app,
+    content,
+    container,
+    sourcePath,
+    component
+  );
+
+  const html = container.innerHTML;
+  return { container, html };
+}
+
+/**
  * Render markdown content using Obsidian's renderer.
  * Waits for plugins (like Admonition, Dataview) to finish processing.
+ * @deprecated Use renderMarkdownImmediate + monitoring instead
  */
 export async function renderMarkdown(
   app: App,
@@ -166,7 +204,7 @@ const CSS_CACHE_TTL = 60000; // 1 minute cache
  * Extract current Obsidian theme CSS with caching.
  * CSS is cached for 1 minute to avoid repeated extraction.
  */
-function extractThemeCSS(): string {
+export function extractThemeCSS(): string {
   const now = Date.now();
   
   // Return cached CSS if still valid
