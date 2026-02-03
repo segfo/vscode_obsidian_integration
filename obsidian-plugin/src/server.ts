@@ -22,6 +22,10 @@ export interface SettingsRequest {
   type: "getSettings";
 }
 
+export interface RestartRequest {
+  type: "restart";
+}
+
 export interface RenderResponse {
   type: "render";
   html: string;
@@ -49,7 +53,7 @@ export interface ErrorResponse {
   message: string;
 }
 
-type RequestMessage = RenderRequest | ResolveRequest | SettingsRequest;
+type RequestMessage = RenderRequest | ResolveRequest | SettingsRequest | RestartRequest;
 
 export interface RenderServerSettings {
   port: number;
@@ -58,6 +62,8 @@ export interface RenderServerSettings {
   updateDelay: number;
   monitorTime: number;
 }
+
+export type RestartCallback = () => void;
 
 /**
  * Simple WebSocket server using Node.js built-in http module.
@@ -68,6 +74,7 @@ export class RenderServer {
   private clients: Set<Duplex> = new Set();
   private app: App;
   private settings: RenderServerSettings;
+  private onRestartRequest: RestartCallback | null = null;
   
   // Current render state
   private currentFilePath: string | null = null;
@@ -84,9 +91,10 @@ export class RenderServer {
   private lastSentHtml: string = "";
   private monitorSessionId = 0;
 
-  constructor(app: App, settings: RenderServerSettings) {
+  constructor(app: App, settings: RenderServerSettings, onRestartRequest?: RestartCallback) {
     this.app = app;
     this.settings = settings;
+    this.onRestartRequest = onRestartRequest ?? null;
   }
 
   async start(): Promise<void> {
@@ -257,6 +265,20 @@ export class RenderServer {
         updateDelay: this.settings.updateDelay,
         monitorTime: this.settings.monitorTime,
       }));
+      return;
+    }
+
+    if (request.type === "restart") {
+      logger.info("Restart request received - reloading plugin");
+      if (this.onRestartRequest) {
+        // Call the restart callback (will reload entire plugin)
+        this.onRestartRequest();
+      } else {
+        // Fallback: just stop and restart server
+        this.stop();
+        void this.start();
+      }
+      // Note: client will need to reconnect
       return;
     }
 

@@ -84,8 +84,16 @@ export class WikilinkHoverProvider implements vscode.HoverProvider {
     currentDocument: vscode.TextDocument,
     linkTarget: string
   ): Promise<vscode.MarkdownString | null> {
+    // Skip same-file anchors
+    if (linkTarget.startsWith("#")) {
+      return null;
+    }
+    
     // Add .md extension if not present
-    let searchPath = linkTarget;
+    let searchPath = linkTarget.split("#")[0]; // Remove anchor part
+    if (!searchPath) {
+      return null; // Only anchor, no file part
+    }
     if (!searchPath.endsWith(".md")) {
       searchPath = searchPath + ".md";
     }
@@ -104,6 +112,11 @@ export class WikilinkHoverProvider implements vscode.HoverProvider {
     }
     
     const filePath = files[0].fsPath;
+    
+    // Skip if linking to current file
+    if (filePath === currentDocument.uri.fsPath) {
+      return null;
+    }
     
     try {
       const content = fs.readFileSync(filePath, "utf8");

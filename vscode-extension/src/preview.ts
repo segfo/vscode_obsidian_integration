@@ -2,12 +2,14 @@ import * as vscode from "vscode";
 
 type LinkClickCallback = (targetPath: string) => void;
 type HoverPreviewCallback = (targetPath: string) => Promise<{ html: string; css: string } | null>;
+type RefreshCallback = () => void;
 
 export class PreviewPanel {
   private static readonly viewType = "obsidianPreview";
   private readonly panel: vscode.WebviewPanel;
   private linkClickCallbacks: LinkClickCallback[] = [];
   private hoverPreviewCallback: HoverPreviewCallback | null = null;
+  private refreshCallbacks: RefreshCallback[] = [];
   private disposeCallbacks: (() => void)[] = [];
   private debugMode: boolean = false;
 
@@ -37,6 +39,8 @@ export class PreviewPanel {
         }
       } else if (message.type === "hoverEnd") {
         // Preview will handle hiding itself
+      } else if (message.type === "refresh") {
+        this.refreshCallbacks.forEach((cb) => cb());
       }
     });
 
@@ -97,9 +101,9 @@ export class PreviewPanel {
   showLoading(title?: string): void {
     this.currentTitle = title;
     const loadingHtml = `
-      <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;color:#888;">
+      <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:#888;">
         <div style="font-size:24px;margin-bottom:16px;">⏳</div>
-        <div>Loading${title ? `: ${title}` : '...'}</div>
+        <div>Loading...</div>
       </div>
     `;
     this.panel.webview.html = this.getWebviewContent(loadingHtml, "");
@@ -189,6 +193,10 @@ export class PreviewPanel {
     this.hoverPreviewCallback = callback;
   }
 
+  onRefresh(callback: RefreshCallback): void {
+    this.refreshCallbacks.push(callback);
+  }
+
   onDispose(callback: () => void): void {
     this.disposeCallbacks.push(callback);
   }
@@ -207,6 +215,7 @@ export class PreviewPanel {
     <div class="preview-title-bar">
       <span class="preview-title-icon">📄</span>
       <span class="preview-title-text">${this.currentTitle}</span>
+      <button class="preview-refresh-btn" onclick="vscode.postMessage({type:'refresh'})" title="Refresh (restart render server)">🔄</button>
     </div>` : '';
     
     return `<!DOCTYPE html>
@@ -225,22 +234,31 @@ export class PreviewPanel {
       --interactive-accent: #0550ae;
     }
     
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      overflow: hidden;
+    }
+    
     body {
       background-color: var(--background-primary);
       color: var(--text-normal);
-      padding: 20px;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       font-size: 14px;
       line-height: 1.6;
+      display: flex;
+      flex-direction: column;
     }
     
-    /* Title bar styles */
+    /* Title bar styles - fixed at top */
     .preview-title-bar {
       display: flex;
       align-items: center;
-      padding: 8px 0 16px 0;
-      margin-bottom: 8px;
+      padding: 10px 20px;
       border-bottom: 1px solid var(--background-secondary);
+      background: var(--background-primary);
+      flex-shrink: 0;
     }
     
     .preview-title-icon {
@@ -252,6 +270,30 @@ export class PreviewPanel {
       font-size: 18px;
       font-weight: 600;
       color: var(--text-normal);
+      flex: 1;
+    }
+    
+    .preview-refresh-btn {
+      background: transparent;
+      border: 1px solid var(--background-secondary);
+      border-radius: 4px;
+      cursor: pointer;
+      padding: 4px 8px;
+      font-size: 14px;
+      opacity: 0.6;
+      transition: opacity 0.2s;
+    }
+    
+    .preview-refresh-btn:hover {
+      opacity: 1;
+      background: var(--background-secondary);
+    }
+    
+    /* Content area - scrollable */
+    .preview-content {
+      flex: 1;
+      overflow: auto;
+      padding: 20px;
     }
     
     /* Link styles */
@@ -351,8 +393,10 @@ export class PreviewPanel {
 <body class="theme-light">
   ${debugPanel}
   ${titleBar}
-  <div class="markdown-preview-view markdown-rendered" style="${this.debugMode ? 'margin-top:50px;' : ''}">
-    ${html}
+  <div class="preview-content">
+    <div class="markdown-preview-view markdown-rendered" style="${this.debugMode ? 'margin-top:50px;' : ''}">
+      ${html}
+    </div>
   </div>
   <div id="hover-preview"></div>
   <script>

@@ -2,11 +2,10 @@
 
 ## Obsidian Plugin
 
-1. Download `main.js`, `manifest.json`, `styles.css` from the [latest release](https://github.com/px39n/obs_cursor/releases/latest)
-2. Create folder `<your-vault>/.obsidian/plugins/cursor-integration/`
-3. Copy the downloaded files into that folder
-4. Restart Obsidian
-5. Settings → Community Plugins → Enable "Cursor Integration"
+1. Download `cursor-integration` from the [latest release](https://github.com/px39n/obs_cursor/releases/latest)
+2. unzip to `<your-vault>/.obsidian/plugins/cursor-integration/`
+3. Restart Obsidian
+4. Settings → Community Plugins → Enable "Cursor Integration"
 
 ## VS Code / Cursor Extension
 

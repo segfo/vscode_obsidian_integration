@@ -28,7 +28,11 @@ export interface ErrorResponse {
   message: string;
 }
 
-type ResponseMessage = RenderResponse | ResolveResponse | SettingsResponse | ErrorResponse;
+export interface RestartedResponse {
+  type: "restarted";
+}
+
+type ResponseMessage = RenderResponse | ResolveResponse | SettingsResponse | ErrorResponse | RestartedResponse;
 
 export type RenderUpdateCallback = (response: RenderResponse) => void;
 
@@ -140,6 +144,43 @@ export class ObsidianClient {
     }
 
     return response as ResolveResponse;
+  }
+
+  async restart(): Promise<void> {
+    console.log("[ObsidianClient] Sending restart request");
+    
+    // Send restart request - server will disconnect, so we don't wait for response
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify({ type: "restart" }));
+    }
+    
+    // Wait for disconnect
+    await new Promise<void>((resolve) => {
+      const checkDisconnect = () => {
+        if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+          resolve();
+        } else {
+          setTimeout(checkDisconnect, 100);
+        }
+      };
+      setTimeout(checkDisconnect, 100);
+      // Timeout after 2 seconds
+      setTimeout(resolve, 2000);
+    });
+    
+    // Clear pending requests
+    this.pendingRequests.forEach((pending) => {
+      pending.reject(new Error("Server restarted"));
+    });
+    this.pendingRequests.clear();
+    
+    // Wait a bit for server to restart
+    await new Promise((r) => setTimeout(r, 500));
+    
+    // Reconnect
+    console.log("[ObsidianClient] Reconnecting after restart");
+    await this.connect();
+    console.log("[ObsidianClient] Reconnected successfully");
   }
 
   onDisconnect(callback: () => void): void {

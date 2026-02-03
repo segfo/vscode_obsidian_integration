@@ -35,7 +35,10 @@ export default class ObsidianRenderServerPlugin extends Plugin {
     await this.loadSettings();
     this.addSettingTab(new CursorIntegrationSettingTab(this.app, this));
 
-    this.server = new RenderServer(this.app, this.settings);
+    this.server = new RenderServer(this.app, this.settings, () => {
+      // Restart callback: reload the entire plugin
+      this.reloadPlugin();
+    });
     await this.server.start();
     logger.info(`Server started on port ${this.settings.port}`);
     new Notice(`Render server started on port ${this.settings.port}`);
@@ -44,10 +47,7 @@ export default class ObsidianRenderServerPlugin extends Plugin {
       id: "restart-render-server",
       name: "Restart render server",
       callback: () => {
-        this.server?.stop();
-        this.server = new RenderServer(this.app, this.settings);
-        void this.server.start();
-        new Notice(`Render server restarted on port ${this.settings.port}`);
+        this.reloadPlugin();
       },
     });
 
@@ -72,6 +72,28 @@ export default class ObsidianRenderServerPlugin extends Plugin {
 
   async saveSettings(): Promise<void> {
     await this.saveData(this.settings);
+  }
+
+  private reloadPlugin(): void {
+    const pluginId = this.manifest.id;
+    logger.info(`Reloading plugin: ${pluginId}`);
+    
+    // Disable then enable the plugin to fully reload it
+    // Using type assertion because plugins API is not in public types
+    const app = this.app as unknown as { 
+      plugins: {
+        disablePlugin: (id: string) => Promise<void>;
+        enablePlugin: (id: string) => Promise<void>;
+      };
+    };
+    
+    void app.plugins.disablePlugin(pluginId).then(() => {
+      return app.plugins.enablePlugin(pluginId);
+    }).then(() => {
+      logger.info("Plugin reloaded successfully");
+    }).catch((err: Error) => {
+      logger.error(`Failed to reload plugin: ${err.message}`);
+    });
   }
 
   private openInCursor(): void {

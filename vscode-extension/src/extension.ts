@@ -7,6 +7,7 @@ import { PreviewPanel } from "./preview";
 import { EditorDecorator } from "./decorator";
 import { WikilinkHoverProvider } from "./hover";
 import { WikilinkLinkProvider } from "./linkProvider";
+import { WikilinkCompletionProvider } from "./completionProvider";
 import { logger, Logger } from "./logger";
 
 let client: ObsidianClient;
@@ -14,8 +15,10 @@ let watcher: EditorWatcher;
 let decorator: EditorDecorator;
 let hoverProvider: WikilinkHoverProvider;
 let linkProvider: WikilinkLinkProvider;
+let completionProvider: WikilinkCompletionProvider;
 let hoverProviderDisposable: vscode.Disposable | undefined;
 let linkProviderDisposable: vscode.Disposable | undefined;
+let completionProviderDisposable: vscode.Disposable | undefined;
 let previewPanel: PreviewPanel | undefined;
 
 export function activate(context: vscode.ExtensionContext): void {
@@ -27,6 +30,7 @@ export function activate(context: vscode.ExtensionContext): void {
   decorator = new EditorDecorator();
   hoverProvider = new WikilinkHoverProvider();
   linkProvider = new WikilinkLinkProvider();
+  completionProvider = new WikilinkCompletionProvider();
   
   // Register hover provider for markdown files
   hoverProviderDisposable = vscode.languages.registerHoverProvider(
@@ -41,6 +45,14 @@ export function activate(context: vscode.ExtensionContext): void {
     linkProvider
   );
   context.subscriptions.push(linkProviderDisposable);
+
+  // Register completion provider for [[wikilinks]]
+  completionProviderDisposable = vscode.languages.registerCompletionItemProvider(
+    { language: "markdown" },
+    completionProvider,
+    "[" // Trigger on [
+  );
+  context.subscriptions.push(completionProviderDisposable);
 
   // Handle render updates (pushed from server)
   client.onRenderUpdate((response) => {
@@ -142,6 +154,22 @@ export function activate(context: vscode.ExtensionContext): void {
       return await getHoverPreview(targetPath);
     });
 
+    // Handle refresh button click
+    previewPanel.onRefresh(async () => {
+      logger.info("Refresh requested - restarting server");
+      try {
+        await client.restart();
+        // Re-render current file
+        const editor = vscode.window.activeTextEditor;
+        if (editor && editor.document.languageId === "markdown") {
+          await updatePreview(editor.document);
+        }
+      } catch (err) {
+        logger.error(`Refresh failed: ${err}`);
+        vscode.window.showErrorMessage(`Refresh failed: ${err}`);
+      }
+    });
+
     if (!client.isConnected()) {
       try {
         await client.connect();
@@ -187,10 +215,12 @@ export function activate(context: vscode.ExtensionContext): void {
         logger.debug(`Render complete for: ${fileName}`);
       } catch (err) {
         const errorMsg = String(err);
+        const titleName = fileName.replace(/\.md$/i, '');
         logger.error(`Render failed for ${fileName}: ${errorMsg}`);
         previewPanel.updateContent(
           `<div style="color:red;padding:20px;">Render failed: ${err}</div>`,
-          ""
+          "",
+          titleName
         );
       }
     }
@@ -241,7 +271,8 @@ async function updatePreview(document: vscode.TextDocument): Promise<void> {
     console.error("[Preview] Render failed:", err);
     previewPanel.updateContent(
       `<div style="color:red;padding:20px;">Render failed: ${err}</div>`,
-      ""
+      "",
+      fileName
     );
   }
 }
@@ -436,5 +467,6 @@ export function deactivate(): void {
   client?.disconnect();
   watcher?.stop();
   decorator?.dispose();
+  completionProvider?.dispose();
   previewPanel?.dispose();
 }
