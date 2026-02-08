@@ -1,0 +1,7 @@
+{
+  "port": 27123,
+  "renderTimeout": 10,
+  "typingDelay": 0.3,
+  "updateDelay": 0.2,
+  "monitorTime": 5
+}
