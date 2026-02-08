@@ -2,7 +2,7 @@
   "name": "obsidianpreview",
   "displayName": "Obsidian for Cursor",
   "description": "Preview and navigate your Obsidian vault in Cursor/VS Code with full plugin support",
-  "version": "1.0.13",
+  "version": "1.0.14",
   "icon": "icon.png",
   "publisher": "px39n",
   "author": {
@@ -58,6 +58,22 @@
       {
         "command": "obsidian-preview.clearLog",
         "title": "Obsidian Preview: Clear Log File"
+      },
+      {
+        "command": "obsidian-preview.uploadToImgur",
+        "title": "Obsidian Preview: Upload Image to Imgur",
+        "icon": "$(cloud-upload)"
+      },
+      {
+        "command": "obsidian-preview.pasteImageToImgur",
+        "title": "Obsidian Preview: Paste Image to Imgur"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "obsidian-preview.pasteImageToImgur",
+        "key": "ctrl+shift+v",
+        "when": "editorTextFocus && editorLangId == markdown"
       }
     ],
     "menus": {

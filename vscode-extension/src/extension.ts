@@ -8,6 +8,7 @@ import { EditorDecorator } from "./decorator";
 import { WikilinkHoverProvider } from "./hover";
 import { WikilinkLinkProvider } from "./linkProvider";
 import { WikilinkCompletionProvider } from "./completionProvider";
+import { ImgurUploadHandler } from "./imgur";
 import { logger, Logger } from "./logger";
 
 let client: ObsidianClient;
@@ -16,6 +17,7 @@ let decorator: EditorDecorator;
 let hoverProvider: WikilinkHoverProvider;
 let linkProvider: WikilinkLinkProvider;
 let completionProvider: WikilinkCompletionProvider;
+let imgurHandler: ImgurUploadHandler;
 let hoverProviderDisposable: vscode.Disposable | undefined;
 let linkProviderDisposable: vscode.Disposable | undefined;
 let completionProviderDisposable: vscode.Disposable | undefined;
@@ -31,6 +33,7 @@ export function activate(context: vscode.ExtensionContext): void {
   hoverProvider = new WikilinkHoverProvider();
   linkProvider = new WikilinkLinkProvider();
   completionProvider = new WikilinkCompletionProvider();
+  imgurHandler = new ImgurUploadHandler(client);
   
   // Register hover provider for markdown files
   hoverProviderDisposable = vscode.languages.registerHoverProvider(
@@ -129,6 +132,49 @@ export function activate(context: vscode.ExtensionContext): void {
     "obsidian-preview.navigateToLink",
     async (args: { target: string; sourcePath: string }) => {
       await navigateToWikilink(args.target, args.sourcePath);
+    }
+  );
+
+  // Command: Upload image to Imgur (file picker)
+  const uploadImgurCommand = vscode.commands.registerCommand(
+    "obsidian-preview.uploadToImgur",
+    async () => {
+      if (!client.isConnected()) {
+        try {
+          await client.connect();
+        } catch (err) {
+          vscode.window.showErrorMessage(`Not connected to Obsidian: ${err}`);
+          return;
+        }
+      }
+      
+      await imgurHandler.initialize();
+      if (!imgurHandler.isAvailable()) {
+        vscode.window.showWarningMessage(
+          "Imgur not available. Make sure Obsidian Imgur plugin is installed and configured."
+        );
+        return;
+      }
+      
+      await imgurHandler.insertImageLink();
+    }
+  );
+
+  // Command: Paste image from clipboard → Imgur (Ctrl+Shift+V)
+  const pasteImgurCommand = vscode.commands.registerCommand(
+    "obsidian-preview.pasteImageToImgur",
+    async () => {
+      if (!client.isConnected()) {
+        try {
+          await client.connect();
+        } catch (err) {
+          // Fall back to normal paste
+          await vscode.commands.executeCommand("editor.action.clipboardPasteAction");
+          return;
+        }
+      }
+      
+      await imgurHandler.pasteImageFromClipboard();
     }
   );
 
@@ -250,6 +296,8 @@ export function activate(context: vscode.ExtensionContext): void {
     openLogCommand,
     clearLogCommand,
     navigateToLinkCommand,
+    uploadImgurCommand,
+    pasteImgurCommand,
     editorChangeDisposable
   );
 

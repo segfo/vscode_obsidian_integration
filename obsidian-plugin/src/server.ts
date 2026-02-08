@@ -47,6 +47,10 @@ export interface RestartRequest {
   type: "restart";
 }
 
+export interface ImgurConfigRequest {
+  type: "getImgurConfig";
+}
+
 export interface RenderResponse {
   type: "render";
   html: string;
@@ -69,12 +73,20 @@ export interface SettingsResponse {
   monitorTime: number;
 }
 
+export interface ImgurConfigResponse {
+  type: "imgurConfig";
+  available: boolean;
+  clientId?: string;
+  accessToken?: string;
+  uploadStrategy?: string;
+}
+
 export interface ErrorResponse {
   type: "error";
   message: string;
 }
 
-type RequestMessage = RenderRequest | ResolveRequest | SettingsRequest | RestartRequest;
+type RequestMessage = RenderRequest | ResolveRequest | SettingsRequest | RestartRequest | ImgurConfigRequest;
 
 export interface RenderServerSettings {
   port: number;
@@ -323,6 +335,13 @@ export class RenderServer {
       return;
     }
 
+    if (request.type === "getImgurConfig") {
+      logger.debug("Imgur config request received");
+      const config = await this.getImgurConfig();
+      this.sendFrame(socket, JSON.stringify(config));
+      return;
+    }
+
     logger.warn(`Unknown request type: ${data}`);
     this.sendFrame(socket, JSON.stringify({ type: "error", message: "Unknown request type" }));
   }
@@ -481,5 +500,79 @@ export class RenderServer {
     
     this.currentMonitor = { observer, timer, debounceTimer: null, container, sessionId };
     logger.debug(`[MONITOR START] ${fileName} #${sessionId} (${this.settings.monitorTime}s)`);
+  }
+
+  private async getImgurConfig(): Promise<ImgurConfigResponse> {
+    const pluginId = "obsidian-imgur-plugin";
+    
+    try {
+      // Check if the imgur plugin is installed
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const plugins = (this.app as any).plugins as { plugins: Record<string, unknown> } | undefined;
+      const imgurPlugin = plugins?.plugins?.[pluginId];
+      
+      if (!imgurPlugin) {
+        logger.debug("Imgur plugin not found");
+        return { type: "imgurConfig", available: false };
+      }
+
+      // Read plugin data.json
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access
+      const vaultPath = (this.app.vault.adapter as any).basePath as string;
+      const dataPath = `${vaultPath}/.obsidian/plugins/${pluginId}/data.json`;
+      
+      // eslint-disable-next-line @typescript-eslint/no-var-requires, @typescript-eslint/no-require-imports
+      const fs = require("fs") as typeof import("fs");
+      
+      let clientId: string | undefined;
+      let uploadStrategy: string | undefined;
+      
+      if (fs.existsSync(dataPath)) {
+        const dataContent = fs.readFileSync(dataPath, "utf-8") as string;
+        const data = JSON.parse(dataContent) as { clientId?: string; uploadStrategy?: string };
+        clientId = data.clientId;
+        uploadStrategy = data.uploadStrategy;
+      }
+
+      // Try to get access token from localStorage
+      let accessToken: string | undefined;
+      try {
+        const tokenKey = `imgur-access-token`;
+        accessToken = localStorage.getItem(tokenKey) ?? undefined;
+        
+        // Also try alternative key patterns
+        if (!accessToken) {
+          accessToken = localStorage.getItem(`${pluginId}-access-token`) ?? undefined;
+        }
+        if (!accessToken) {
+          // Scan localStorage for any imgur-related token
+          for (let i = 0; i < localStorage.length; i++) {
+            const key = localStorage.key(i);
+            if (key && key.toLowerCase().includes("imgur") && key.toLowerCase().includes("token")) {
+              accessToken = localStorage.getItem(key) ?? undefined;
+              if (accessToken) {
+                logger.debug(`Found access token under key: ${key}`);
+                break;
+              }
+            }
+          }
+        }
+      } catch (e) {
+        logger.debug("Could not access localStorage for access token");
+      }
+
+      logger.info(`Imgur config: strategy=${uploadStrategy ?? "unknown"}, hasClientId=${!!clientId}, hasAccessToken=${!!accessToken}`);
+      
+      return {
+        type: "imgurConfig",
+        available: true,
+        clientId,
+        accessToken,
+        uploadStrategy,
+      };
+    } catch (e) {
+      logger.error(`Failed to get imgur config: ${e instanceof Error ? e.message : String(e)}`);
+      return { type: "imgurConfig", available: false };
+    }
   }
 }

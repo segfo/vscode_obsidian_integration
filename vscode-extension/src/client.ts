@@ -32,7 +32,15 @@ export interface RestartedResponse {
   type: "restarted";
 }
 
-type ResponseMessage = RenderResponse | ResolveResponse | SettingsResponse | ErrorResponse | RestartedResponse;
+export interface ImgurConfigResponse {
+  type: "imgurConfig";
+  available: boolean;
+  clientId?: string;
+  accessToken?: string;
+  uploadStrategy?: string;
+}
+
+type ResponseMessage = RenderResponse | ResolveResponse | SettingsResponse | ErrorResponse | RestartedResponse | ImgurConfigResponse;
 
 export type RenderUpdateCallback = (response: RenderResponse) => void;
 
@@ -144,6 +152,19 @@ export class ObsidianClient {
     }
 
     return response as ResolveResponse;
+  }
+
+  async getImgurConfig(): Promise<ImgurConfigResponse | null> {
+    try {
+      const response = await this.sendRequest({ type: "getImgurConfig" }, 5000);
+      if (response.type === "imgurConfig") {
+        return response as ImgurConfigResponse;
+      }
+      return null;
+    } catch (err) {
+      console.warn("[ObsidianClient] Failed to get imgur config:", err);
+      return null;
+    }
   }
 
   async restart(): Promise<void> {

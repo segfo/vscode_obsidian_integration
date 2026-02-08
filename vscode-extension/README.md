@@ -21,7 +21,9 @@ Cursor/VS Code is great for AI-assisted editing. Obsidian is great for knowledge
 - **Click to Navigate** — `[[wikilinks]]` and `[[File#Heading]]` work
 - **Hover Preview** — See linked notes without switching files
 - **Syntax Highlighting** — Wikilinks, tags, embeds colored in editor
+- **Wikilink Completion** — Type `[[` to get file suggestions with alias support
 - **Collapsible Callouts** — Expand/collapse just like Obsidian
+- **Imgur Upload** — Paste images directly to Imgur with `Ctrl+Shift+V` (requires [Obsidian Imgur Plugin](https://github.com/gavvvr/obsidian-imgur-plugin), Windows only)
 - **Connection Status** — Clear feedback when Obsidian isn't running
 
 
@@ -35,8 +37,7 @@ Settings → Community Plugins → Browse → **"Cursor Integration"** → Insta
 
 
 ### 2. Cursor / VS Code Extension
-- **Cursor**: [**Install from OpenVSX**](https://open-vsx.org/extension/px39n/obsidianpreview) or search `obsidianpreview`
-- **VS Code**: [**Install from Marketplace**](https://marketplace.visualstudio.com/items?itemName=px39n.obsidianpreview)
+Search `obsidianpreview` in Extensions and install
 
 ---
 
