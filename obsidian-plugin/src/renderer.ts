@@ -198,7 +198,7 @@ async function waitForMutations(
 // CSS cache - extracted once and reused
 let cachedCSS: string | null = null;
 let cssExtractedAt = 0;
-const CSS_CACHE_TTL = 60000; // 1 minute cache
+const CSS_CACHE_TTL = 300000; // 5 minute cache
 
 /**
  * Extract current Obsidian theme CSS with caching.

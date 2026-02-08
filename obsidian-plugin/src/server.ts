@@ -6,6 +6,27 @@ import { createHash } from "crypto";
 import { renderMarkdownImmediate, resolveWikilink, extractThemeCSS } from "./renderer";
 import { logger } from "./logger";
 
+// Electron window control for preventing background throttling
+interface ElectronWindow {
+  isMinimized: () => boolean;
+  restore: () => void;
+  setSize: (width: number, height: number) => void;
+  setPosition: (x: number, y: number) => void;
+  isVisible: () => boolean;
+  show: () => void;
+}
+
+let electronWindow: ElectronWindow | null = null;
+
+try {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports, no-undef
+  const electron = require("electron") as { remote?: { getCurrentWindow?: () => ElectronWindow } };
+  electronWindow = electron.remote?.getCurrentWindow?.() ?? null;
+} catch {
+  // Electron API not available
+  electronWindow = null;
+}
+
 export interface RenderRequest {
   type: "render";
   filePath: string;
@@ -153,6 +174,26 @@ export class RenderServer {
     this.clients.clear();
     this.server?.close();
     this.server = null;
+  }
+
+  /**
+   * Ensure window is visible to prevent Electron background throttling.
+   * Only acts if window is minimized - restores to small window in top-left corner.
+   */
+  private ensureWindowVisible(): void {
+    if (!electronWindow) return;
+    
+    try {
+      if (electronWindow.isMinimized()) {
+        logger.debug("[WINDOW] Restoring minimized window to prevent throttling");
+        electronWindow.restore();
+        electronWindow.setSize(200, 200);
+        electronWindow.setPosition(0, 0);
+      }
+    } catch (err) {
+      // Ignore errors - window control is optional
+      logger.debug(`[WINDOW] Failed to control window: ${err}`);
+    }
   }
 
   private stopMonitoring(): void {
@@ -310,6 +351,9 @@ export class RenderServer {
     const fileName = request.filePath.split(/[/\\]/).pop() || request.filePath;
     const contentSize = request.content.length;
     const startTime = Date.now();
+    
+    // Prevent background throttling: if window is minimized, restore to small window
+    this.ensureWindowVisible();
     
     this.isProcessing = true;
     this.currentFilePath = request.filePath;
