@@ -2,7 +2,7 @@
   "name": "obsidianpreview",
   "displayName": "Obsidian for Cursor",
   "description": "Preview and navigate your Obsidian vault in Cursor/VS Code with full plugin support",
-  "version": "1.0.14",
+  "version": "1.0.16",
   "icon": "icon.png",
   "publisher": "px39n",
   "author": {
@@ -67,6 +67,18 @@
       {
         "command": "obsidian-preview.pasteImageToImgur",
         "title": "Obsidian Preview: Paste Image to Imgur"
+      },
+      {
+        "command": "obsidian-preview.openObsidian",
+        "title": "Obsidian Preview: Open Obsidian Vault"
+      },
+      {
+        "command": "obsidian-preview.updateVaultPath",
+        "title": "Obsidian Preview: Update Vault Path"
+      },
+      {
+        "command": "obsidian-preview.updateObsidianPlugin",
+        "title": "Obsidian Preview: Update Obsidian Plugin"
       }
     ],
     "keybindings": [
@@ -92,6 +104,11 @@
           "type": "number",
           "default": 27123,
           "description": "Port for Obsidian render server"
+        },
+        "obsidianPreview.vaultPath": {
+          "type": "string",
+          "default": "",
+          "description": "Path to your Obsidian vault (auto-detected if left empty)"
         }
       }
     }

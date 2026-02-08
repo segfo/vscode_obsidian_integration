@@ -3,6 +3,7 @@ import * as vscode from "vscode";
 type LinkClickCallback = (targetPath: string) => void;
 type HoverPreviewCallback = (targetPath: string) => Promise<{ html: string; css: string } | null>;
 type RefreshCallback = () => void;
+type NavigateBackCallback = () => void;
 
 export class PreviewPanel {
   private static readonly viewType = "obsidianPreview";
@@ -10,8 +11,10 @@ export class PreviewPanel {
   private linkClickCallbacks: LinkClickCallback[] = [];
   private hoverPreviewCallback: HoverPreviewCallback | null = null;
   private refreshCallbacks: RefreshCallback[] = [];
+  private navigateBackCallbacks: NavigateBackCallback[] = [];
   private disposeCallbacks: (() => void)[] = [];
   private debugMode: boolean = false;
+  private canGoBack: boolean = false;
 
   private constructor(
     panel: vscode.WebviewPanel,
@@ -41,6 +44,8 @@ export class PreviewPanel {
         // Preview will handle hiding itself
       } else if (message.type === "refresh") {
         this.refreshCallbacks.forEach((cb) => cb());
+      } else if (message.type === "navigateBack") {
+        this.navigateBackCallbacks.forEach((cb) => cb());
       }
     });
 
@@ -197,6 +202,16 @@ export class PreviewPanel {
     this.refreshCallbacks.push(callback);
   }
 
+  onNavigateBack(callback: NavigateBackCallback): void {
+    this.navigateBackCallbacks.push(callback);
+  }
+
+  setCanGoBack(value: boolean): void {
+    this.canGoBack = value;
+    // Dynamically update back button visibility in the webview
+    this.panel.webview.postMessage({ type: "updateBackButton", visible: value });
+  }
+
   onDispose(callback: () => void): void {
     this.disposeCallbacks.push(callback);
   }
@@ -213,6 +228,7 @@ export class PreviewPanel {
     
     const titleBar = this.currentTitle ? `
     <div class="preview-title-bar">
+      <button id="back-btn" class="preview-back-btn${this.canGoBack ? '' : ' disabled'}" onclick="if(!this.classList.contains('disabled'))vscode.postMessage({type:'navigateBack'})" title="Go back">←</button>
       <span class="preview-title-icon">📄</span>
       <span class="preview-title-text">${this.currentTitle}</span>
       <button class="preview-refresh-btn" onclick="vscode.postMessage({type:'refresh'})" title="Refresh (restart render server)">🔄</button>
@@ -271,6 +287,31 @@ export class PreviewPanel {
       font-weight: 600;
       color: var(--text-normal);
       flex: 1;
+    }
+    
+    .preview-back-btn {
+      background: transparent;
+      border: 1px solid var(--background-secondary);
+      border-radius: 4px;
+      cursor: pointer;
+      padding: 4px 10px;
+      font-size: 16px;
+      font-weight: bold;
+      opacity: 0.7;
+      transition: opacity 0.2s, background 0.2s, color 0.2s;
+      margin-right: 8px;
+      color: var(--text-muted);
+    }
+    
+    .preview-back-btn:hover:not(.disabled) {
+      opacity: 1;
+      background: var(--background-secondary);
+      color: var(--text-accent);
+    }
+    
+    .preview-back-btn.disabled {
+      opacity: 0.25;
+      cursor: default;
     }
     
     .preview-refresh-btn {
@@ -542,11 +583,20 @@ export class PreviewPanel {
     var hoverTimeout = null;
     var currentHoverLink = null;
     
-    // Listen for hover preview results from extension
+    // Listen for messages from extension
     window.addEventListener('message', function(e) {
       var msg = e.data;
       if (msg.type === 'hoverPreviewResult') {
         showHoverPreview(msg.html, msg.x, msg.y, msg.targetPath);
+      } else if (msg.type === 'updateBackButton') {
+        var btn = document.getElementById('back-btn');
+        if (btn) {
+          if (msg.visible) {
+            btn.classList.remove('disabled');
+          } else {
+            btn.classList.add('disabled');
+          }
+        }
       }
     });
     

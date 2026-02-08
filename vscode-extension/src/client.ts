@@ -21,6 +21,7 @@ export interface SettingsResponse {
   typingDelay: number;
   updateDelay: number;
   monitorTime: number;
+  protocolVersion?: number;
 }
 
 export interface ErrorResponse {
@@ -56,9 +57,14 @@ export class ObsidianClient {
   private renderUpdateCallbacks: RenderUpdateCallback[] = [];
   private renderTimeoutMs = 60000;
   private typingDelayMs = 300;
+  private obsidianProtocolVersion = 0;
 
   constructor(port: number) {
     this.port = port;
+  }
+
+  getObsidianProtocolVersion(): number {
+    return this.obsidianProtocolVersion;
   }
 
   getTypingDelayMs(): number {
@@ -218,7 +224,10 @@ export class ObsidianClient {
       if (response.type === "settings") {
         this.renderTimeoutMs = response.renderTimeout * 1000;
         this.typingDelayMs = response.typingDelay * 1000;
-        console.log(`[ObsidianClient] Settings: renderTimeout=${response.renderTimeout}s, typingDelay=${response.typingDelay}s`);
+        if (response.protocolVersion != null) {
+          this.obsidianProtocolVersion = response.protocolVersion;
+        }
+        console.log(`[ObsidianClient] Settings: renderTimeout=${response.renderTimeout}s, typingDelay=${response.typingDelay}s, protocol=${this.obsidianProtocolVersion}`);
       }
     } catch (err) {
       console.warn("[ObsidianClient] Failed to fetch settings, using defaults:", err);

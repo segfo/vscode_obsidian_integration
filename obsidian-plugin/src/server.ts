@@ -71,6 +71,7 @@ export interface SettingsResponse {
   typingDelay: number;
   updateDelay: number;
   monitorTime: number;
+  protocolVersion: number;
 }
 
 export interface ImgurConfigResponse {
@@ -317,6 +318,7 @@ export class RenderServer {
         typingDelay: this.settings.typingDelay,
         updateDelay: this.settings.updateDelay,
         monitorTime: this.settings.monitorTime,
+        protocolVersion: 2,
       }));
       return;
     }
