@@ -507,7 +507,7 @@ export class RenderServer {
     
     try {
       // Check if the imgur plugin is installed
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access
       const plugins = (this.app as any).plugins as { plugins: Record<string, unknown> } | undefined;
       const imgurPlugin = plugins?.plugins?.[pluginId];
       
@@ -521,14 +521,14 @@ export class RenderServer {
       const vaultPath = (this.app.vault.adapter as any).basePath as string;
       const dataPath = `${vaultPath}/.obsidian/plugins/${pluginId}/data.json`;
       
-      // eslint-disable-next-line @typescript-eslint/no-var-requires, @typescript-eslint/no-require-imports
+      // eslint-disable-next-line @typescript-eslint/no-var-requires, @typescript-eslint/no-require-imports, no-undef
       const fs = require("fs") as typeof import("fs");
       
       let clientId: string | undefined;
       let uploadStrategy: string | undefined;
       
       if (fs.existsSync(dataPath)) {
-        const dataContent = fs.readFileSync(dataPath, "utf-8") as string;
+        const dataContent = fs.readFileSync(dataPath, "utf-8");
         const data = JSON.parse(dataContent) as { clientId?: string; uploadStrategy?: string };
         clientId = data.clientId;
         uploadStrategy = data.uploadStrategy;
@@ -537,6 +537,7 @@ export class RenderServer {
       // Try to get access token from localStorage
       let accessToken: string | undefined;
       try {
+        /* eslint-disable no-restricted-globals, no-undef */
         const tokenKey = `imgur-access-token`;
         accessToken = localStorage.getItem(tokenKey) ?? undefined;
         
@@ -557,7 +558,8 @@ export class RenderServer {
             }
           }
         }
-      } catch (e) {
+        /* eslint-enable no-restricted-globals, no-undef */
+      } catch {
         logger.debug("Could not access localStorage for access token");
       }
 
