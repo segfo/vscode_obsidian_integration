@@ -2,7 +2,7 @@
   "name": "obsidianpreview",
   "displayName": "Obsidian for Cursor",
   "description": "Preview and navigate your Obsidian vault in Cursor/VS Code with full plugin support",
-  "version": "1.0.16",
+  "version": "1.0.17",
   "icon": "icon.png",
   "publisher": "px39n",
   "author": {
