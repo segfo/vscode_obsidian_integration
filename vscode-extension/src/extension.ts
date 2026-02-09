@@ -2,6 +2,7 @@ import * as vscode from "vscode";
 import * as path from "path";
 import * as fs from "fs";
 import * as https from "https";
+import { execSync } from "child_process";
 import { ObsidianClient } from "./client";
 import { EditorWatcher } from "./watcher";
 import { PreviewPanel } from "./preview";
@@ -290,8 +291,10 @@ export function activate(context: vscode.ExtensionContext): void {
       return;
     }
 
-    // Initial render
+    // Initial render (small delay after auto-launch to let plugin initialize)
+    await sleep(500);
     const editor = vscode.window.activeTextEditor;
+    logger.info(`Initial render: editor=${!!editor}, lang=${editor?.document.languageId}, connected=${client.isConnected()}`);
     if (editor && editor.document.languageId === "markdown") {
       await updatePreview(editor.document);
     }
@@ -613,8 +616,123 @@ async function handleLinkClick(targetPath: string): Promise<void> {
 // ─── Auto-Launch Obsidian ───
 
 /**
+ * Generate a styled status HTML block for the preview panel.
+ * Shows a step indicator with icon, title, subtitle, and optional detail.
+ */
+function statusHtml(icon: string, title: string, subtitle: string, detail?: string): string {
+  return `<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:#888;">
+    <div style="font-size:32px;margin-bottom:16px;">${icon}</div>
+    <div style="font-size:16px;font-weight:600;margin-bottom:8px;">${title}</div>
+    <div style="font-size:13px;color:#aaa;">${subtitle}</div>
+    ${detail ? `<div style="margin-top:20px;font-size:12px;color:#bbb;">${detail}</div>` : ""}
+  </div>`;
+}
+
+/**
+ * Generate a styled error HTML block for the preview panel.
+ */
+function errorHtml(title: string, message: string, hint?: string): string {
+  return `<div style="text-align:center;padding:40px;">
+    <h2 style="color:#d32f2f;">${title}</h2>
+    <p style="color:#666;margin:20px 0;">${message}</p>
+    ${hint ? `<p style="color:#999;font-size:12px;">${hint}</p>` : ""}
+  </div>`;
+}
+
+/**
+ * Check if Obsidian is currently running (Windows only).
+ */
+function isObsidianRunning(): boolean {
+  try {
+    const output = execSync('tasklist /FI "IMAGENAME eq Obsidian.exe" /NH', {
+      encoding: "utf8",
+      windowsHide: true,
+    });
+    return output.toLowerCase().includes("obsidian.exe");
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Kill all Obsidian processes (Windows only).
+ * Returns true if kill was attempted.
+ */
+function killObsidian(): boolean {
+  try {
+    execSync("taskkill /F /IM Obsidian.exe", {
+      encoding: "utf8",
+      windowsHide: true,
+    });
+    logger.info("Obsidian processes killed");
+    return true;
+  } catch {
+    // Process may not exist or already exited
+    return false;
+  }
+}
+
+/**
+ * Check if the Obsidian plugin files (main.js, manifest.json) exist in the vault.
+ */
+function isPluginInstalled(vaultPath: string): boolean {
+  const pluginDir = path.join(vaultPath, ".obsidian", "plugins", PLUGIN_FOLDER_NAME);
+  const mainJs = path.join(pluginDir, "main.js");
+  const manifest = path.join(pluginDir, "manifest.json");
+  return fs.existsSync(mainJs) && fs.existsSync(manifest);
+}
+
+/**
+ * Check if the plugin is enabled in community-plugins.json.
+ */
+function isPluginEnabled(vaultPath: string): boolean {
+  const cpPath = path.join(vaultPath, ".obsidian", "community-plugins.json");
+  if (!fs.existsSync(cpPath)) return false;
+  try {
+    const list: string[] = JSON.parse(fs.readFileSync(cpPath, "utf8"));
+    return Array.isArray(list) && list.includes(PLUGIN_FOLDER_NAME);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Enable the plugin by adding its ID to community-plugins.json.
+ * Creates the file if it doesn't exist.
+ * Should only be called when Obsidian is NOT running to avoid conflicts.
+ */
+function enablePluginInConfig(vaultPath: string): boolean {
+  const cpPath = path.join(vaultPath, ".obsidian", "community-plugins.json");
+  try {
+    let list: string[] = [];
+    if (fs.existsSync(cpPath)) {
+      const raw = fs.readFileSync(cpPath, "utf8");
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        list = parsed;
+      }
+    }
+    if (!list.includes(PLUGIN_FOLDER_NAME)) {
+      list.push(PLUGIN_FOLDER_NAME);
+      fs.writeFileSync(cpPath, JSON.stringify(list, null, 2), "utf8");
+      logger.info(`Plugin "${PLUGIN_FOLDER_NAME}" added to community-plugins.json`);
+    }
+    return true;
+  } catch (err) {
+    logger.error(`Failed to enable plugin in config: ${err}`);
+    return false;
+  }
+}
+
+/**
  * Try to launch Obsidian and wait for the WebSocket connection.
- * Shows progress in the preview panel. Returns true if connection succeeded.
+ * Shows staged progress in the preview panel:
+ *   1. Detect/validate vault
+ *   2. Check if plugin is installed → if not, close Obsidian, install, enable
+ *   3. Check if plugin is enabled → if not, close Obsidian, enable
+ *   4. Launch Obsidian
+ *   5. Wait for WebSocket connection
+ *   6. On success, refresh preview with rendered content
  */
 async function tryAutoLaunchObsidian(): Promise<boolean> {
   if (!previewPanel) return false;
@@ -622,25 +740,65 @@ async function tryAutoLaunchObsidian(): Promise<boolean> {
   const config = vscode.workspace.getConfiguration("obsidianPreview");
   let vaultPath = config.get<string>("vaultPath");
 
-  // Detect vault if not stored
+  // ── Step 1: Detect / validate vault ──
+  const detectedVaults = detectVaults();
+
   if (!vaultPath) {
-    const vaults = detectVaults();
-    if (vaults.length === 1) {
-      vaultPath = vaults[0];
+    // No stored vault — auto-detect
+    if (detectedVaults.length === 1) {
+      vaultPath = detectedVaults[0];
       await config.update("vaultPath", vaultPath, vscode.ConfigurationTarget.Global);
-    } else if (vaults.length > 1) {
+    } else if (detectedVaults.length > 1) {
       vaultPath = await selectAndStoreVault(true);
     }
+  } else if (detectedVaults.length > 0) {
+    const normalizedStored = path.resolve(vaultPath).toLowerCase();
+    const match = detectedVaults.some(
+      (v) => path.resolve(v).toLowerCase() === normalizedStored
+    );
+
+    if (detectedVaults.length > 1) {
+      // Multiple vaults in workspace — always ask user to choose
+      const storedName = path.basename(vaultPath);
+      const detectedNames = detectedVaults.map((v) => path.basename(v)).join(", ");
+      const choice = await vscode.window.showInformationMessage(
+        `Multiple vaults detected (${detectedNames}). Currently using "${storedName}". Switch?`,
+        { modal: false },
+        "Switch",
+        "Keep Current"
+      );
+
+      if (choice === "Switch") {
+        vaultPath = await selectAndStoreVault(true);
+      }
+      // "Keep Current" or dismissed → keep stored vaultPath
+    } else if (!match) {
+      // Single vault in workspace but doesn't match stored — ask user
+      const storedName = path.basename(vaultPath);
+      const detectedName = path.basename(detectedVaults[0]);
+      const choice = await vscode.window.showInformationMessage(
+        `Current vault "${storedName}" doesn't match this workspace (detected: ${detectedName}). Switch?`,
+        { modal: false },
+        "Switch",
+        "Keep Current"
+      );
+
+      if (choice === "Switch") {
+        vaultPath = detectedVaults[0];
+        await config.update("vaultPath", vaultPath, vscode.ConfigurationTarget.Global);
+        vscode.window.showInformationMessage(`Vault switched to: ${detectedName}`);
+      }
+    }
+    // Single vault that matches stored → do nothing, proceed
   }
 
   if (!vaultPath) {
-    // No vault found or stored — show error and trigger selection
     previewPanel.updateContent(
-      `<div style="text-align:center;padding:40px;">
-        <h2 style="color:#d32f2f;">No Vault Configured</h2>
-        <p style="color:#666;margin:20px 0;">Cannot find an Obsidian vault in the workspace.</p>
-        <p style="color:#666;">Please select or enter your vault path...</p>
-      </div>`,
+      errorHtml(
+        "No Vault Configured",
+        "Cannot find an Obsidian vault in the workspace.",
+        "Please select or enter your vault path..."
+      ),
       ""
     );
     vaultPath = await selectAndStoreVault(true);
@@ -650,29 +808,25 @@ async function tryAutoLaunchObsidian(): Promise<boolean> {
   // Validate vault path exists on disk
   const obsidianDir = path.join(vaultPath, ".obsidian");
   if (!fs.existsSync(vaultPath) || !fs.existsSync(obsidianDir)) {
-    // Stored path is invalid — show error and trigger re-selection
     previewPanel.updateContent(
-      `<div style="text-align:center;padding:40px;">
-        <h2 style="color:#d32f2f;">Vault Path Invalid</h2>
-        <p style="color:#666;margin:20px 0;">The configured vault does not exist or is not an Obsidian vault:</p>
-        <p><code style="background:#f5f5f5;padding:4px 8px;border-radius:4px;font-size:12px;">${vaultPath}</code></p>
-        <p style="color:#666;margin-top:16px;">Please select the correct vault path...</p>
-      </div>`,
+      errorHtml(
+        "Vault Path Invalid",
+        `The configured vault does not exist or is not an Obsidian vault:`,
+        `<code style="background:#f5f5f5;padding:4px 8px;border-radius:4px;font-size:12px;">${vaultPath}</code>`
+      ),
       ""
     );
-    // Clear invalid path and let user re-select
     await config.update("vaultPath", "", vscode.ConfigurationTarget.Global);
     vaultPath = await selectAndStoreVault(true);
     if (!vaultPath) return false;
 
-    // Re-validate after user selection
     if (!fs.existsSync(vaultPath) || !fs.existsSync(path.join(vaultPath, ".obsidian"))) {
       previewPanel.updateContent(
-        `<div style="text-align:center;padding:40px;">
-          <h2 style="color:#d32f2f;">Invalid Vault Path</h2>
-          <p style="color:#666;">The path you entered is not a valid Obsidian vault (no .obsidian folder found):</p>
-          <p><code style="background:#f5f5f5;padding:4px 8px;border-radius:4px;font-size:12px;">${vaultPath}</code></p>
-        </div>`,
+        errorHtml(
+          "Invalid Vault Path",
+          "The path you entered is not a valid Obsidian vault (no .obsidian folder found):",
+          `<code style="background:#f5f5f5;padding:4px 8px;border-radius:4px;font-size:12px;">${vaultPath}</code>`
+        ),
         ""
       );
       await config.update("vaultPath", "", vscode.ConfigurationTarget.Global);
@@ -680,44 +834,116 @@ async function tryAutoLaunchObsidian(): Promise<boolean> {
     }
   }
 
-  // Check / auto-update Obsidian plugin before launching
-  await checkAndUpdateObsidianPlugin(vaultPath);
-
-  // Show launching message in preview
   const vaultName = path.basename(vaultPath);
+
+  // ── Step 2: Check if plugin is installed ──
+  let freshInstall = false;
+  if (!isPluginInstalled(vaultPath)) {
+    // Plugin not installed — show status in preview
+    previewPanel.updateContent(
+      statusHtml("📦", "Plugin Not Installed", `Vault: ${vaultName}`, "The Cursor Integration plugin is not installed in this vault."),
+      ""
+    );
+
+    // Close Obsidian first if running (to safely write files)
+    if (isObsidianRunning()) {
+      previewPanel.updateContent(
+        statusHtml("⏳", "Closing Obsidian...", `Vault: ${vaultName}`, "Obsidian must be closed to install the plugin safely."),
+        ""
+      );
+      killObsidian();
+      await sleep(2000); // Wait for process to fully exit
+    }
+
+    // Install plugin (non-interactive — auto-download)
+    previewPanel.updateContent(
+      statusHtml("📥", "Installing Plugin...", `Vault: ${vaultName}`, "Downloading Cursor Integration plugin from GitHub..."),
+      ""
+    );
+
+    const installed = await autoInstallPlugin(vaultPath);
+    if (!installed) {
+      previewPanel.updateContent(
+        errorHtml(
+          "Plugin Installation Failed",
+          "Could not download the Cursor Integration plugin from GitHub.",
+          "Check your network connection and try again."
+        ),
+        ""
+      );
+      return false;
+    }
+    freshInstall = true;
+  }
+
+  // ── Step 3: Check if plugin is enabled ──
+  if (!isPluginEnabled(vaultPath)) {
+    previewPanel.updateContent(
+      statusHtml("🔧", "Enabling Plugin...", `Vault: ${vaultName}`, "Adding Cursor Integration to enabled plugins..."),
+      ""
+    );
+
+    // Close Obsidian if running (to safely modify community-plugins.json)
+    if (isObsidianRunning()) {
+      previewPanel.updateContent(
+        statusHtml("⏳", "Closing Obsidian...", `Vault: ${vaultName}`, "Obsidian must be closed to enable the plugin safely."),
+        ""
+      );
+      killObsidian();
+      await sleep(2000);
+    }
+
+    const enabled = enablePluginInConfig(vaultPath);
+    if (!enabled) {
+      previewPanel.updateContent(
+        errorHtml(
+          "Failed to Enable Plugin",
+          "Could not update community-plugins.json.",
+          "Please enable the Cursor Integration plugin manually in Obsidian Settings → Community Plugins."
+        ),
+        ""
+      );
+      return false;
+    }
+
+    previewPanel.updateContent(
+      statusHtml("✅", "Plugin Enabled", `Vault: ${vaultName}`, "Cursor Integration plugin is now enabled."),
+      ""
+    );
+    await sleep(1000);
+  }
+
+  // ── Step 4: Check for plugin updates (skip if just installed) ──
+  if (!freshInstall) {
+    await checkAndUpdateObsidianPlugin(vaultPath);
+  }
+
+  // ── Step 5: Launch Obsidian ──
   previewPanel.updateContent(
-    `<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:#888;">
-      <div style="font-size:32px;margin-bottom:16px;">🚀</div>
-      <div style="font-size:16px;font-weight:600;margin-bottom:8px;">Starting Obsidian...</div>
-      <div style="font-size:13px;color:#aaa;">Vault: ${vaultName}</div>
-      <div style="margin-top:20px;font-size:12px;color:#bbb;">Waiting for connection...</div>
-    </div>`,
+    statusHtml("🚀", "Opening Obsidian...", `Vault: ${vaultName}`, "Launching Obsidian and waiting for connection..."),
     ""
   );
 
-  // Launch Obsidian via URI
   try {
     const uri = vscode.Uri.parse(
       `obsidian://open?vault=${encodeURIComponent(vaultName)}`
     );
     await vscode.env.openExternal(uri);
-    logger.info(`Launched Obsidian vault: ${vaultName}`);
+    logger.info(`Launched Obsidian vault: ${vaultName} (${vaultPath})`);
   } catch (err) {
     logger.error(`Failed to launch Obsidian: ${err}`);
     previewPanel.updateContent(
-      `<div style="text-align:center;padding:40px;">
-        <h2 style="color:#d32f2f;">Failed to Launch Obsidian</h2>
-        <p style="color:#666;">Vault: <code>${vaultPath}</code></p>
-        <p style="color:#999;font-size:12px;">Error: ${err}</p>
-        <p style="color:#666;margin-top:16px;">Check that the vault path is correct via<br>
-        <strong>Obsidian Preview: Update Vault Path</strong></p>
-      </div>`,
+      errorHtml(
+        "Failed to Launch Obsidian",
+        `Vault: <code>${vaultPath}</code>`,
+        `Error: ${err}<br><br>Check that the vault path is correct via <strong>Obsidian Preview: Update Vault Path</strong>`
+      ),
       ""
     );
     return false;
   }
 
-  // Poll for connection (retry every 2s, up to 30s)
+  // ── Step 6: Wait for WebSocket connection ──
   const maxRetries = 15;
   for (let i = 1; i <= maxRetries; i++) {
     await sleep(2000);
@@ -725,17 +951,17 @@ async function tryAutoLaunchObsidian(): Promise<boolean> {
     try {
       await client.connect();
       logger.info(`Connected to Obsidian after ${i * 2}s`);
+
+      // Connection succeeded — show brief success then return
+      previewPanel.updateContent(
+        statusHtml("✅", "Connected!", `Vault: ${vaultName}`, "Rendering preview..."),
+        ""
+      );
       return true;
     } catch {
-      // Update progress
       if (previewPanel) {
         previewPanel.updateContent(
-          `<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:#888;">
-            <div style="font-size:32px;margin-bottom:16px;">🚀</div>
-            <div style="font-size:16px;font-weight:600;margin-bottom:8px;">Starting Obsidian...</div>
-            <div style="font-size:13px;color:#aaa;">Vault: ${vaultName}</div>
-            <div style="margin-top:20px;font-size:12px;color:#bbb;">Waiting for connection... (${i * 2}s)</div>
-          </div>`,
+          statusHtml("🚀", "Opening Obsidian...", `Vault: ${vaultName}`, `Waiting for connection... (${i * 2}s)`),
           ""
         );
       }
@@ -762,6 +988,41 @@ async function tryAutoLaunchObsidian(): Promise<boolean> {
     );
   }
   return false;
+}
+
+/**
+ * Automatically download and install the Obsidian plugin (no user prompt).
+ * Returns true if installation succeeded.
+ */
+async function autoInstallPlugin(vaultPath: string): Promise<boolean> {
+  const pluginDir = path.join(vaultPath, ".obsidian", "plugins", PLUGIN_FOLDER_NAME);
+
+  try {
+    const json = await httpsGet(GITHUB_API_LATEST);
+    const release = JSON.parse(json) as GitHubRelease;
+
+    const mainAsset = release.assets.find((a) => a.name === "main.js");
+    const manifestAsset = release.assets.find((a) => a.name === "manifest.json");
+
+    if (!mainAsset || !manifestAsset) {
+      logger.warn("Release assets not found (main.js or manifest.json missing)");
+      return false;
+    }
+
+    if (!fs.existsSync(pluginDir)) {
+      fs.mkdirSync(pluginDir, { recursive: true });
+    }
+
+    await downloadToFile(mainAsset.browser_download_url, path.join(pluginDir, "main.js"));
+    await downloadToFile(manifestAsset.browser_download_url, path.join(pluginDir, "manifest.json"));
+
+    const version = release.tag_name.replace(/^v/, "");
+    logger.info(`Obsidian plugin v${version} installed automatically`);
+    return true;
+  } catch (err) {
+    logger.error(`Auto-install plugin failed: ${err}`);
+    return false;
+  }
 }
 
 function sleep(ms: number): Promise<void> {

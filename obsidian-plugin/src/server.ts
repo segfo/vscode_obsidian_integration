@@ -200,9 +200,10 @@ export class RenderServer {
       if (electronWindow.isMinimized()) {
         logger.debug("[WINDOW] Restoring minimized window to prevent throttling");
         electronWindow.restore();
-        electronWindow.setSize(200, 200);
-        electronWindow.setPosition(0, 0);
       }
+      // Always ensure window is small and in top-left corner
+      electronWindow.setSize(200, 200);
+      electronWindow.setPosition(0, 0);
     } catch (err) {
       // Ignore errors - window control is optional
       logger.debug(`[WINDOW] Failed to control window: ${err}`);
