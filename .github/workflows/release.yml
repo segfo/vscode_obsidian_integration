@@ -24,6 +24,18 @@ jobs:
             obsidian-plugin/package-lock.json
             vscode-extension/package-lock.json
       
+      # Sync version from tag into both components
+      - name: Sync Version from Tag
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          echo "Syncing version: $VERSION"
+          # Update obsidian-plugin manifest.json
+          jq --arg v "$VERSION" '.version = $v' obsidian-plugin/manifest.json > tmp.json && mv tmp.json obsidian-plugin/manifest.json
+          # Update obsidian-plugin package.json
+          jq --arg v "$VERSION" '.version = $v' obsidian-plugin/package.json > tmp.json && mv tmp.json obsidian-plugin/package.json
+          # Update vscode-extension package.json
+          jq --arg v "$VERSION" '.version = $v' vscode-extension/package.json > tmp.json && mv tmp.json vscode-extension/package.json
+
       # Build Obsidian plugin
       - name: Build Obsidian Plugin
         run: |
