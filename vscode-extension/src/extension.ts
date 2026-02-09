@@ -198,6 +198,10 @@ export function activate(context: vscode.ExtensionContext): void {
   );
 
   async function openPreviewPanel(ctx: vscode.ExtensionContext, debugMode: boolean) {
+    // Capture the document to render BEFORE any async operations
+    const initialEditor = vscode.window.activeTextEditor;
+    const initialDocument = initialEditor?.document.languageId === "markdown" ? initialEditor.document : undefined;
+
     // Create panel first so we can show error in it
     if (previewPanel) {
       previewPanel.dispose();
@@ -291,12 +295,12 @@ export function activate(context: vscode.ExtensionContext): void {
       return;
     }
 
-    // Initial render (small delay after auto-launch to let plugin initialize)
+    // Initial render — use the document captured at the start (before auto-launch delay)
     await sleep(500);
-    const editor = vscode.window.activeTextEditor;
-    logger.info(`Initial render: editor=${!!editor}, lang=${editor?.document.languageId}, connected=${client.isConnected()}`);
-    if (editor && editor.document.languageId === "markdown") {
-      await updatePreview(editor.document);
+    const docToRender = initialDocument ?? (vscode.window.activeTextEditor?.document.languageId === "markdown" ? vscode.window.activeTextEditor.document : undefined);
+    logger.info(`Initial render: doc=${docToRender?.uri.fsPath ?? 'none'}, connected=${client.isConnected()}`);
+    if (docToRender) {
+      await updatePreview(docToRender);
     }
   }
 

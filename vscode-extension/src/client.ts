@@ -76,9 +76,8 @@ export class ObsidianClient {
       this.ws = new WebSocket(`ws://localhost:${this.port}`);
 
       this.ws.on("open", () => {
-        // Fetch settings from OBS after connection
-        void this.fetchSettings();
-        resolve();
+        // Fetch settings from OBS after connection, then resolve
+        this.fetchSettings().then(() => resolve(), () => resolve());
       });
 
       this.ws.on("error", (err) => {
