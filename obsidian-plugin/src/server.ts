@@ -14,6 +14,8 @@ interface ElectronWindow {
   setPosition: (x: number, y: number) => void;
   isVisible: () => boolean;
   show: () => void;
+  focus: () => void;
+  webContents: { setBackgroundThrottling: (enabled: boolean) => void };
 }
 
 let electronWindow: ElectronWindow | null = null;
@@ -22,6 +24,10 @@ try {
   // eslint-disable-next-line @typescript-eslint/no-require-imports, no-undef
   const electron = require("electron") as { remote?: { getCurrentWindow?: () => ElectronWindow } };
   electronWindow = electron.remote?.getCurrentWindow?.() ?? null;
+  if (electronWindow) {
+    electronWindow.webContents.setBackgroundThrottling(false);
+    logger.debug("[WINDOW] Background throttling disabled");
+  }
 } catch {
   // Electron API not available
   electronWindow = null;
@@ -49,6 +55,10 @@ export interface RestartRequest {
 
 export interface ImgurConfigRequest {
   type: "getImgurConfig";
+}
+
+export interface FocusWindowRequest {
+  type: "focusWindow";
 }
 
 export interface RenderResponse {
@@ -87,7 +97,7 @@ export interface ErrorResponse {
   message: string;
 }
 
-type RequestMessage = RenderRequest | ResolveRequest | SettingsRequest | RestartRequest | ImgurConfigRequest;
+type RequestMessage = RenderRequest | ResolveRequest | SettingsRequest | RestartRequest | ImgurConfigRequest | FocusWindowRequest;
 
 export interface RenderServerSettings {
   port: number;
@@ -321,6 +331,20 @@ export class RenderServer {
         monitorTime: this.settings.monitorTime,
         protocolVersion: 2,
       }));
+      return;
+    }
+
+    if (request.type === "focusWindow") {
+      logger.debug("Focus window request received");
+      if (electronWindow) {
+        try {
+          electronWindow.show();
+          electronWindow.focus();
+        } catch (err) {
+          logger.debug(`[WINDOW] Focus failed: ${err}`);
+        }
+      }
+      this.sendFrame(socket, JSON.stringify({ type: "focusWindow", success: true }));
       return;
     }
 

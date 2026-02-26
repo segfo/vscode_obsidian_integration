@@ -199,8 +199,30 @@ export function activate(context: vscode.ExtensionContext): void {
 
   async function openPreviewPanel(ctx: vscode.ExtensionContext, debugMode: boolean) {
     // Capture the document to render BEFORE any async operations
-    const initialEditor = vscode.window.activeTextEditor;
-    const initialDocument = initialEditor?.document.languageId === "markdown" ? initialEditor.document : undefined;
+    // Try: activeTextEditor → visibleTextEditors → active tab (Custom Editor like vditor)
+    let initialDocument: vscode.TextDocument | undefined;
+    const activeEditor = vscode.window.activeTextEditor;
+    if (activeEditor?.document.languageId === "markdown") {
+      initialDocument = activeEditor.document;
+    } else {
+      const mdEditor = vscode.window.visibleTextEditors.find(e => e.document.languageId === "markdown");
+      if (mdEditor) {
+        initialDocument = mdEditor.document;
+      } else {
+        // Fallback: check active tab (handles Custom Editors like Office Viewer / vditor)
+        const activeTab = vscode.window.tabGroups.activeTabGroup.activeTab;
+        const tabInput = activeTab?.input;
+        if (tabInput && (tabInput instanceof vscode.TabInputText || tabInput instanceof vscode.TabInputCustom)) {
+          if (tabInput.uri.fsPath.endsWith('.md')) {
+            try {
+              initialDocument = await vscode.workspace.openTextDocument(tabInput.uri);
+            } catch {
+              // Ignore — file may not be accessible
+            }
+          }
+        }
+      }
+    }
 
     // Create panel first so we can show error in it
     if (previewPanel) {
@@ -236,6 +258,14 @@ export function activate(context: vscode.ExtensionContext): void {
         // Preview will update via onDidChangeActiveTextEditor
       } catch (err) {
         console.error("[Preview] Navigate back failed:", err);
+      }
+    });
+
+    // Handle "bring Obsidian to front" button click
+    previewPanel.onFocusObsidian(async () => {
+      logger.info("Focus Obsidian window requested");
+      if (client.isConnected()) {
+        await client.focusWindow();
       }
     });
 
@@ -297,7 +327,9 @@ export function activate(context: vscode.ExtensionContext): void {
 
     // Initial render — use the document captured at the start (before auto-launch delay)
     await sleep(500);
-    const docToRender = initialDocument ?? (vscode.window.activeTextEditor?.document.languageId === "markdown" ? vscode.window.activeTextEditor.document : undefined);
+    const docToRender = initialDocument
+      ?? (vscode.window.activeTextEditor?.document.languageId === "markdown" ? vscode.window.activeTextEditor.document : undefined)
+      ?? vscode.window.visibleTextEditors.find(e => e.document.languageId === "markdown")?.document;
     logger.info(`Initial render: doc=${docToRender?.uri.fsPath ?? 'none'}, connected=${client.isConnected()}`);
     if (docToRender) {
       await updatePreview(docToRender);
@@ -323,7 +355,11 @@ export function activate(context: vscode.ExtensionContext): void {
         const protoHint = (obsProto !== 0 && obsProto !== PROTOCOL_VERSION)
           ? getProtocolMismatchHtml(obsProto, PROTOCOL_VERSION) : "";
         previewPanel.updateContent(
-          `<div style="color:red;padding:20px;">Render failed: ${err}</div>${protoHint}`,
+          `<div style="color:red;padding:20px;">Render failed: ${err}</div>${protoHint}
+           <div style="text-align:center;margin-top:16px;">
+             <p style="color:#999;font-size:12px;">Rendering may fail if Obsidian is in the background and being throttled by the OS.</p>
+             <button onclick="vscode.postMessage({type:'focusObsidian'})" style="margin-top:8px;padding:8px 16px;background:#0d6efd;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:12px;">Bring Obsidian to Front</button>
+           </div>`,
           "",
           titleName
         );
@@ -417,7 +453,11 @@ async function updatePreview(document: vscode.TextDocument): Promise<void> {
     const protoHint = (obsProto !== 0 && obsProto !== PROTOCOL_VERSION)
       ? getProtocolMismatchHtml(obsProto, PROTOCOL_VERSION) : "";
     previewPanel.updateContent(
-      `<div style="color:red;padding:20px;">Render failed: ${err}</div>${protoHint}`,
+      `<div style="color:red;padding:20px;">Render failed: ${err}</div>${protoHint}
+       <div style="text-align:center;margin-top:16px;">
+         <p style="color:#999;font-size:12px;">Rendering may fail if Obsidian is in the background and being throttled by the OS.</p>
+         <button onclick="vscode.postMessage({type:'focusObsidian'})" style="margin-top:8px;padding:8px 16px;background:#0d6efd;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:12px;">Bring Obsidian to Front</button>
+       </div>`,
       "",
       fileName
     );
@@ -623,12 +663,16 @@ async function handleLinkClick(targetPath: string): Promise<void> {
  * Generate a styled status HTML block for the preview panel.
  * Shows a step indicator with icon, title, subtitle, and optional detail.
  */
-function statusHtml(icon: string, title: string, subtitle: string, detail?: string): string {
+function statusHtml(icon: string, title: string, subtitle: string, detail?: string, showFocusButton?: boolean): string {
+  const focusBtn = showFocusButton
+    ? `<button onclick="vscode.postMessage({type:'focusObsidian'})" style="margin-top:16px;padding:8px 16px;background:#0d6efd;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:12px;">Bring Obsidian to Front</button>`
+    : "";
   return `<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:#888;">
     <div style="font-size:32px;margin-bottom:16px;">${icon}</div>
     <div style="font-size:16px;font-weight:600;margin-bottom:8px;">${title}</div>
     <div style="font-size:13px;color:#aaa;">${subtitle}</div>
     ${detail ? `<div style="margin-top:20px;font-size:12px;color:#bbb;">${detail}</div>` : ""}
+    ${focusBtn}
   </div>`;
 }
 

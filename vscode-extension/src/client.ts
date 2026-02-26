@@ -172,6 +172,14 @@ export class ObsidianClient {
     }
   }
 
+  async focusWindow(): Promise<void> {
+    try {
+      await this.sendRequest({ type: "focusWindow" }, 3000);
+    } catch {
+      // Ignore — best-effort
+    }
+  }
+
   async restart(): Promise<void> {
     console.log("[ObsidianClient] Sending restart request");
     

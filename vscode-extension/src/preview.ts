@@ -4,6 +4,7 @@ type LinkClickCallback = (targetPath: string) => void;
 type HoverPreviewCallback = (targetPath: string) => Promise<{ html: string; css: string } | null>;
 type RefreshCallback = () => void;
 type NavigateBackCallback = () => void;
+type FocusObsidianCallback = () => void;
 
 export class PreviewPanel {
   private static readonly viewType = "obsidianPreview";
@@ -12,6 +13,7 @@ export class PreviewPanel {
   private hoverPreviewCallback: HoverPreviewCallback | null = null;
   private refreshCallbacks: RefreshCallback[] = [];
   private navigateBackCallbacks: NavigateBackCallback[] = [];
+  private focusObsidianCallbacks: FocusObsidianCallback[] = [];
   private disposeCallbacks: (() => void)[] = [];
   private debugMode: boolean = false;
   private canGoBack: boolean = false;
@@ -46,6 +48,8 @@ export class PreviewPanel {
         this.refreshCallbacks.forEach((cb) => cb());
       } else if (message.type === "navigateBack") {
         this.navigateBackCallbacks.forEach((cb) => cb());
+      } else if (message.type === "focusObsidian") {
+        this.focusObsidianCallbacks.forEach((cb) => cb());
       }
     });
 
@@ -204,6 +208,10 @@ export class PreviewPanel {
 
   onNavigateBack(callback: NavigateBackCallback): void {
     this.navigateBackCallbacks.push(callback);
+  }
+
+  onFocusObsidian(callback: FocusObsidianCallback): void {
+    this.focusObsidianCallbacks.push(callback);
   }
 
   setCanGoBack(value: boolean): void {
