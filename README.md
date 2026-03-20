@@ -3,9 +3,6 @@
 > **Preview & navigate your Obsidian vault while coding with AI.**
 
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
-[![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-support-yellow?logo=buy-me-a-coffee)](https://buymeacoffee.com/px39n)
-
-**Have a feature request? Feel free to reach out: cumbiasbj12@gmail.com**
 
 ---
 
@@ -26,7 +23,6 @@ Cursor/VS Code is great for AI-assisted editing. Obsidian is great for knowledge
 - **Wikilink Completion** — Type `[[` to get file suggestions with alias support
 - **Collapsible Callouts** — Expand/collapse just like Obsidian
 - **Auto Launch** — Automatically detects vault, launches Obsidian, and installs/updates the plugin
-- **Imgur Upload** — Paste images directly to Imgur with `Ctrl+Shift+V` (requires [Obsidian Imgur Plugin](https://github.com/gavvvr/obsidian-imgur-plugin), Windows only)
 
 ---
 
@@ -59,28 +55,6 @@ For manual installation, see the [Manual Installation Guide](INSTALL.md).
 
 ---
 
-## Support
-
-If you find this useful, consider supporting the project ☕
-
-[![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-support-yellow?logo=buy-me-a-coffee&style=for-the-badge)](https://buymeacoffee.com/px39n)
-
-<details open>
-<summary>支付宝 / Alipay</summary>
-
-<img src="assets/alipay.jpg" width="200">
-
-</details>
-
-<details open>
-<summary>微信支付 / WeChat Pay</summary>
-
-<img src="assets/wechat.jpg" width="200">
-
-</details>
-
----
-
 ## License
 
-MIT © px39n
+MIT

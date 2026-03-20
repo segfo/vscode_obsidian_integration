@@ -2,21 +2,21 @@
   "name": "obsidianpreview",
   "displayName": "Obsidian for Cursor",
   "description": "Preview and navigate your Obsidian vault in Cursor/VS Code with full plugin support",
-  "version": "1.0.18",
+  "version": "1.0.20",
   "icon": "icon.png",
-  "publisher": "px39n",
+  "publisher": "segfo",
   "author": {
-    "name": "px39n"
+    "name": "segfo"
   },
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/px39n/obs_cursor"
+    "url": "https://github.com/segfo/vscode_obsidian_integration"
   },
   "bugs": {
-    "url": "https://github.com/px39n/obs_cursor/issues"
+    "url": "https://github.com/segfo/vscode_obsidian_integration/issues"
   },
-  "homepage": "https://github.com/px39n/obs_cursor#readme",
+  "homepage": "https://github.com/segfo/vscode_obsidian_integration#readme",
   "engines": {
     "vscode": "^1.85.0"
   },

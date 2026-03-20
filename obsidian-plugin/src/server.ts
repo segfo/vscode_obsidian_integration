@@ -212,8 +212,8 @@ export class RenderServer {
         electronWindow.restore();
       }
       // Always ensure window is small and in top-left corner
-      electronWindow.setSize(200, 200);
-      electronWindow.setPosition(0, 0);
+      // electronWindow.setSize(200, 200);
+      // electronWindow.setPosition(0, 0);
     } catch (err) {
       // Ignore errors - window control is optional
       logger.debug(`[WINDOW] Failed to control window: ${err}`);

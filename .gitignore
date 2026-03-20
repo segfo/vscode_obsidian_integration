@@ -21,3 +21,5 @@ npm-debug.log*
 
 # Private docs
 related_doc/
+
+dist/

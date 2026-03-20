@@ -18,7 +18,7 @@ import { logger, Logger } from "./logger";
  * WebSocket message format between the Obsidian plugin and the Cursor extension.
  */
 const PROTOCOL_VERSION = 2;
-const GITHUB_RELEASES_URL = "https://github.com/px39n/obs_cursor/releases";
+const GITHUB_RELEASES_URL = "https://github.com/segfo/vscode_obsidian_integration/releases";
 
 function getProtocolMismatchHtml(obsProtocol: number, cursorProtocol: number): string {
   return `<div style="margin-top:20px;padding:12px;border:1px solid #f0ad4e;border-radius:6px;background:#fff3cd;color:#856404;font-size:13px;">
@@ -1221,8 +1221,8 @@ async function openObsidianVault(): Promise<void> {
 
 // ─── Obsidian Plugin Auto-Update ───
 
-const GITHUB_API_LATEST = "https://api.github.com/repos/px39n/obs_cursor/releases/latest";
-const PLUGIN_FOLDER_NAME = "cursor-integration";
+const GITHUB_API_LATEST = "https://api.github.com/repos/segfo/vscode_obsidian_integration/releases/latest";
+const PLUGIN_FOLDER_NAME = "vscode-integration";
 
 interface GitHubRelease {
   tag_name: string;
